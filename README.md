@@ -292,6 +292,19 @@ The framework, library choices, and toolchain are Mitra's to evolve — these co
 
 ---
 
+## Data Sources
+
+| Source | Dataset | ID | Purpose |
+|---|---|---|---|
+| NYC Open Data | DOB Elevator Complaints | `kqwi-7ncn` | Active complaint feed — the "possible outage" signal |
+| NYC Open Data | DOB NOW Safety Compliance | `e5aq-a4j2` | Maps BIN → lat/lon for complaint locations |
+| NYC Planning | GeoSearch API | — | Fallback geocoding when a BIN has no device record |
+| Open-Meteo | Historical + Forecast | — | Heat forecast for predictive risk scoring |
+
+**Important:** `kqwi-7ncn` is not a real-time outage feed — it reflects complaints filed by residents/managers, typically hours to days after an actual stoppage. Alert copy should say "reported outage" or "active complaint," not "confirmed outage." See [`docs/nyc-open-data.md`](./docs/nyc-open-data.md) for the full integration guide, including the critical date-format gotcha, the ingest polling pattern, and the PostGIS schema.
+
+---
+
 ## CI/CD
 
 GitHub Actions workflows run on every push and pull request:
@@ -340,6 +353,8 @@ proactive-care-route-optimizer/
 ├── README.md
 ├── CLAUDE.md                  Claude Code session config and project guide
 ├── CHANGELOG.md
+├── docs/
+│   └── nyc-open-data.md       NYC Open Data integration guide (datasets, ingest, PostGIS)
 ├── .gitattributes             LF line endings enforced
 ├── .pre-commit-config.yaml    ruff + prettier + no-AI-attribution
 ├── pyproject.toml             commitizen config (root-level versioning)

@@ -97,7 +97,9 @@ backend/          ← Django REST Framework (Karl)
   tests/
 ```
 
-Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the Django backend. NYC Open Data API query specifics TBD (Karl to document).
+Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the Django backend.
+
+**NYC Open Data integration details:** `docs/nyc-open-data.md` — covers both datasets, the date format gotcha, the ingest flow, and the PostGIS schema and proximity query. Read it before touching any ingest or alert logic.
 
 ---
 
