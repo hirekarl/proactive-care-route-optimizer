@@ -14,6 +14,7 @@ class ElevatorComplaintFactory(factory.django.DjangoModelFactory):
     house_number = "100"
     house_street = "MAIN STREET"
     zip_code = "10001"
+    community_board = "105"  # Manhattan CB 5
     date_entered = datetime.date(2026, 1, 15)
     status = "ACTIVE"
     # Default: Times Square area

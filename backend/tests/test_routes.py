@@ -52,7 +52,7 @@ def test_create_route_geocodes_stops(client: Client) -> None:
     assert len(data["stops"]) == 1
     stop = data["stops"][0]
     assert abs(stop["lat"] - 40.7484) < 0.001
-    assert abs(stop["lon"] - (-73.9857)) < 0.001
+    assert abs(stop["lon"] - (-73.9857)) < 0.001  # lon stays as-is (not snake_case)
     assert Route.objects.count() == 1
     assert RouteStop.objects.count() == 1
 
@@ -92,8 +92,8 @@ def test_route_detail_embeds_outage_alerts(client: Client) -> None:
     detail_response = client.get(f"/api/routes/{route_id}/")
     assert detail_response.status_code == 200
     stop = detail_response.json()["stops"][0]
-    assert len(stop["outage_alerts"]) == 1
-    assert stop["outage_alerts"][0]["outage_alert"] is True
+    assert len(stop["outageAlerts"]) == 1
+    assert stop["outageAlerts"][0]["outageAlert"] is True
 
 
 @pytest.mark.django_db
@@ -118,4 +118,4 @@ def test_route_detail_no_alerts_when_no_nearby_complaints(client: Client) -> Non
     detail_response = client.get(f"/api/routes/{route_id}/")
     assert detail_response.status_code == 200
     stop = detail_response.json()["stops"][0]
-    assert stop["outage_alerts"] == []
+    assert stop["outageAlerts"] == []

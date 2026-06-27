@@ -1,3 +1,4 @@
+import datetime
 from typing import Any
 
 from django.db import connection
@@ -7,16 +8,78 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.geocoding import geocode_address
-from api.models import BuildingRiskScore, Route, RouteStop
+from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 from api.serializers import (
     BuildingRiskScoreSerializer,
-    OutageSerializer,
+    EnrichedOutageSerializer,
+    ProviderSerializer,
     RouteCreateSerializer,
     RouteSerializer,
 )
 
 ALERT_RADIUS_M = 804.67  # 0.5 miles in metres
 
+BOROUGH_BY_CODE = {
+    "1": "Manhattan",
+    "2": "Bronx",
+    "3": "Brooklyn",
+    "4": "Queens",
+    "5": "Staten Island",
+}
+
+# Hardcoded from EDA — heat weeks produce 1.20× baseline complaint volume.
+# Replace with a live query once per-building heat_ratio aggregation is wired up.
+HEAT_RISK_MULTIPLIER = 1.20
+
+ALL_OUTAGES_SQL = """
+    SELECT
+        ec.complaint_number,
+        ec.bin,
+        ec.house_number,
+        ec.house_street,
+        ec.zip_code,
+        ec.community_board,
+        ec.date_entered,
+        ec.status,
+        ec.lat,
+        ec.lon,
+        COALESCE(brs.is_chronic, false) AS chronic_offender
+    FROM elevator_complaints ec
+    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+    WHERE ec.status = 'ACTIVE' AND ec.location IS NOT NULL
+    ORDER BY ec.date_entered DESC
+"""
+
+NEARBY_OUTAGES_SQL = """
+    SELECT
+        ec.complaint_number,
+        ec.bin,
+        ec.house_number,
+        ec.house_street,
+        ec.zip_code,
+        ec.community_board,
+        ec.date_entered,
+        ec.status,
+        ec.lat,
+        ec.lon,
+        COALESCE(brs.is_chronic, false) AS chronic_offender,
+        ST_Distance(
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
+        ) AS distance_m
+    FROM elevator_complaints ec
+    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+    WHERE ec.status = 'ACTIVE'
+      AND ec.location IS NOT NULL
+      AND ST_DWithin(
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+            %s
+          )
+    ORDER BY distance_m ASC
+"""
+
+# Used internally by RouteDetailView — compact shape for embedded stop alerts.
 PROXIMITY_SQL = """
     SELECT
         complaint_number,
@@ -37,16 +100,43 @@ PROXIMITY_SQL = """
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
             %s
           )
-    ORDER BY distance_m ASC;
+    ORDER BY distance_m ASC
 """
 
 
-def _nearby_outages(lat: float, lon: float) -> list[dict[str, Any]]:
-    """Return active complaints within ALERT_RADIUS_M of the given point."""
+def _enrich_outage_row(row: dict[str, Any]) -> dict[str, Any]:
+    cb = str(row.get("community_board") or "")
+    borough = BOROUGH_BY_CODE.get(cb[:1], "") if cb else ""
+    address = ", ".join(
+        p
+        for p in [
+            f"{row.get('house_number', '')} {row.get('house_street', '')}".strip(),
+            "New York, NY",
+            str(row.get("zip_code") or ""),
+        ]
+        if p
+    )
+    return {
+        **row,
+        "id": row["complaint_number"],
+        "borough": borough,
+        "address": address,
+        "lng": row["lon"],
+        # singleElevator not yet in data model — see docs/deferred-frontend-api-gaps.md
+        "single_elevator": False,
+    }
+
+
+def _run_query(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
     with connection.cursor() as cursor:
-        cursor.execute(PROXIMITY_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
-        columns = [col[0] for col in cursor.description]
-        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        cursor.execute(sql, params or [])
+        cols = [c[0] for c in cursor.description]
+        return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+
+
+def _nearby_outages(lat: float, lon: float) -> list[dict[str, Any]]:
+    """Compact proximity results for embedding in route-stop alert lists."""
+    return _run_query(PROXIMITY_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
 
 
 class HealthCheckView(APIView):
@@ -55,15 +145,114 @@ class HealthCheckView(APIView):
 
 
 class OutagesView(APIView):
-    def get(self, request: Request) -> Response:
-        try:
-            lat = float(request.query_params["lat"])
-            lon = float(request.query_params["lon"])
-        except (KeyError, ValueError):
-            return Response({"detail": "lat and lon query params are required."}, status=400)
+    """
+    GET /api/outages/          — all active outages (enriched)
+    GET /api/outages/?lat=&lon= — active outages within 0.5 mi (enriched + distance_m)
+    """
 
-        outages = _nearby_outages(lat, lon)
-        return Response(OutageSerializer(outages, many=True).data)
+    def get(self, request: Request) -> Response:
+        lat_str = request.query_params.get("lat")
+        lon_str = request.query_params.get("lon")
+
+        if lat_str is None and lon_str is None:
+            rows = [_enrich_outage_row(r) for r in _run_query(ALL_OUTAGES_SQL)]
+        elif lat_str is not None and lon_str is not None:
+            try:
+                lat, lon = float(lat_str), float(lon_str)
+            except ValueError:
+                return Response({"detail": "lat and lon must be valid floats."}, status=400)
+            rows = [
+                _enrich_outage_row(r)
+                for r in _run_query(NEARBY_OUTAGES_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
+            ]
+        else:
+            return Response({"detail": "Provide both lat and lon, or neither."}, status=400)
+
+        return Response(EnrichedOutageSerializer(rows, many=True).data)
+
+
+class DashboardSummaryView(APIView):
+    """GET /api/dashboard/summary/ — aggregate stats for the dispatcher dashboard."""
+
+    def get(self, request: Request) -> Response:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM elevator_complaints WHERE status = 'ACTIVE'")
+            active_outages: int = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM building_risk_scores WHERE is_chronic = true")
+            chronic_offenders: int = cursor.fetchone()[0]
+            cursor.execute("SELECT MAX(fetched_at) FROM elevator_complaints")
+            last_ingest_at_raw = cursor.fetchone()[0]
+            last_ingest_at = last_ingest_at_raw.isoformat() if last_ingest_at_raw else None
+
+            # Borough breakdown — first digit of community_board encodes the borough
+            cursor.execute(
+                """
+                SELECT
+                    LEFT(ec.community_board, 1) AS borough_code,
+                    COUNT(*) AS active_outages,
+                    SUM(CASE WHEN brs.is_chronic = true THEN 1 ELSE 0 END) AS chronic_offenders
+                FROM elevator_complaints ec
+                LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+                WHERE ec.status = 'ACTIVE'
+                  AND ec.community_board != ''
+                GROUP BY LEFT(ec.community_board, 1)
+                ORDER BY borough_code
+                """
+            )
+            borough_rows = cursor.fetchall()
+
+            # Active outage counts for the last 7 calendar days
+            cursor.execute(
+                """
+                SELECT date_entered, COUNT(*) AS outage_count
+                FROM elevator_complaints
+                WHERE status = 'ACTIVE'
+                  AND date_entered >= CURRENT_DATE - INTERVAL '6 days'
+                GROUP BY date_entered
+                ORDER BY date_entered
+                """
+            )
+            trend_rows = cursor.fetchall()
+
+        borough_breakdown = [
+            {
+                "borough": BOROUGH_BY_CODE.get(str(code), str(code)),
+                "active_outages": int(active),
+                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "chronic_offenders": int(chronic),
+            }
+            for code, active, chronic in borough_rows
+            if str(code) in BOROUGH_BY_CODE
+        ]
+
+        outages_trend = [
+            {
+                "date": (d.strftime("%-d %b") if isinstance(d, datetime.date) else str(d)),
+                "outages": int(count),
+            }
+            for d, count in trend_rows
+        ]
+
+        return Response(
+            {
+                "active_outages": active_outages,
+                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "providers_affected": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "chronic_offenders": chronic_offenders,
+                "single_elevator_buildings": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "heat_risk_multiplier": HEAT_RISK_MULTIPLIER,
+                "last_ingest_at": last_ingest_at,
+                "borough_breakdown": borough_breakdown,
+                "outages_trend": outages_trend,
+            }
+        )
+
+
+class ProvidersView(ListAPIView[DFTAProvider]):
+    """GET /api/providers/ — DFTA provider locations."""
+
+    queryset = DFTAProvider.objects.all().order_by("name")
+    serializer_class = ProviderSerializer
 
 
 class RouteCreateView(APIView):
@@ -94,8 +283,6 @@ class RouteDetailView(RetrieveAPIView[Route]):
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         route = self.get_object()
         stops = list(route.stops.all())
-        # alerts_by_stop_id is passed through serializer context so RouteStopSerializer
-        # can embed outage data without dynamically patching model instances.
         alerts_by_stop_id: dict[int, list[dict[str, Any]]] = {}
         for stop in stops:
             if stop.lat is not None and stop.lon is not None:
