@@ -40,8 +40,8 @@ def _insert_complaint(
 def _insert_provider(provider_id: str, lat: float, lon: float) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "INSERT INTO dfta_providers (provider_id, name, lat, lon) VALUES (%s, 'P', %s, %s)"
-            " ON CONFLICT (provider_id) DO NOTHING",
+            "INSERT INTO dfta_providers (provider_id, name, borough, address, lat, lon)"
+            " VALUES (%s, 'P', '', '', %s, %s) ON CONFLICT (provider_id) DO NOTHING",
             [provider_id, lat, lon],
         )
         cursor.execute(
