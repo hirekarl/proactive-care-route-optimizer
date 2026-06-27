@@ -92,3 +92,104 @@ def test_ingest_date_parsing() -> None:
     assert _parse_dob_date("01/01/2023") == datetime.date(2023, 1, 1)
     assert _parse_dob_date("") is None
     assert _parse_dob_date("not-a-date") is None
+
+
+@pytest.mark.django_db
+class TestIngestForecast:
+    """Tests for the ingest_forecast management command."""
+
+    def _mock_response(self, dates: list[str], temps: list[float | None]) -> MagicMock:
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = {"daily": {"time": dates, "temperature_2m_max": temps}}
+        return m
+
+    def test_stores_forecast_rows(self) -> None:
+        """Happy path: Open-Meteo response creates WeatherForecast rows."""
+        from django.core.management import call_command
+
+        dates = ["2026-06-27", "2026-06-28", "2026-06-29"]
+        temps = [94.0, 88.5, 75.2]
+        with patch(
+            "api.management.commands.ingest_forecast.httpx.get",
+            return_value=self._mock_response(dates, temps),
+        ):
+            call_command("ingest_forecast", verbosity=0)
+
+        from api.models import WeatherForecast
+
+        assert WeatherForecast.objects.count() == 3
+        assert WeatherForecast.objects.get(date="2026-06-27").temp_max_f == 94.0
+
+    def test_replaces_existing_rows(self) -> None:
+        """A second run replaces all previous forecast rows."""
+        from django.core.management import call_command
+
+        from api.models import WeatherForecast
+
+        with patch(
+            "api.management.commands.ingest_forecast.httpx.get",
+            return_value=self._mock_response(["2026-06-01"], [80.0]),
+        ):
+            call_command("ingest_forecast", verbosity=0)
+        assert WeatherForecast.objects.count() == 1
+
+        with patch(
+            "api.management.commands.ingest_forecast.httpx.get",
+            return_value=self._mock_response(["2026-06-27", "2026-06-28"], [91.0, 89.0]),
+        ):
+            call_command("ingest_forecast", verbosity=0)
+
+        assert WeatherForecast.objects.count() == 2
+        assert not WeatherForecast.objects.filter(date="2026-06-01").exists()
+
+    def test_null_temp_stored_as_zero(self) -> None:
+        """A null temperature in the API response is stored as 0.0."""
+        from django.core.management import call_command
+
+        with patch(
+            "api.management.commands.ingest_forecast.httpx.get",
+            return_value=self._mock_response(["2026-06-27"], [None]),
+        ):
+            call_command("ingest_forecast", verbosity=0)
+
+        from api.models import WeatherForecast
+
+        assert WeatherForecast.objects.get(date="2026-06-27").temp_max_f == 0.0
+
+    def test_uses_correct_open_meteo_params(self) -> None:
+        """timezone and temperature_unit are sent as required params."""
+        from django.core.management import call_command
+
+        with patch("api.management.commands.ingest_forecast.httpx.get") as mock_get:
+            mock_get.return_value = self._mock_response([], [])
+            call_command("ingest_forecast", verbosity=0)
+
+        _, kwargs = mock_get.call_args
+        params = kwargs["params"]
+        assert params["timezone"] == "America/New_York"
+        assert params["temperature_unit"] == "fahrenheit"
+        assert params["forecast_days"] == 7
+
+
+class TestGeocode:
+    """Unit tests for geocode_address utility."""
+
+    def test_returns_none_on_empty_features(self) -> None:
+        """Empty features list → None, no exception."""
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = {"features": []}
+        with patch("api.geocoding.httpx.get", return_value=m):
+            from api.geocoding import geocode_address
+
+            assert geocode_address("123 Nowhere St") is None
+
+    def test_returns_none_on_http_error(self) -> None:
+        """Any exception from httpx → None."""
+        import httpx
+
+        with patch("api.geocoding.httpx.get", side_effect=httpx.HTTPError("timeout")):
+            from api.geocoding import geocode_address
+
+            assert geocode_address("123 Nowhere St") is None
