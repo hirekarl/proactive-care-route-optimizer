@@ -1,14 +1,19 @@
 from typing import Any
 
 from django.db import connection
-from rest_framework.generics import RetrieveAPIView
+from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.geocoding import geocode_address
-from api.models import Route, RouteStop
-from api.serializers import OutageSerializer, RouteCreateSerializer, RouteSerializer
+from api.models import BuildingRiskScore, Route, RouteStop
+from api.serializers import (
+    BuildingRiskScoreSerializer,
+    OutageSerializer,
+    RouteCreateSerializer,
+    RouteSerializer,
+)
 
 ALERT_RADIUS_M = 804.67  # 0.5 miles in metres
 
@@ -97,3 +102,36 @@ class RouteDetailView(RetrieveAPIView[Route]):
                 alerts_by_stop_id[stop.pk] = _nearby_outages(stop.lat, stop.lon)
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
+
+
+class BuildingListView(ListAPIView[BuildingRiskScore]):
+    """List buildings with risk scores. Optional filters: min_score, is_chronic, borough."""
+
+    serializer_class = BuildingRiskScoreSerializer
+
+    def get_queryset(self) -> Any:
+        qs = BuildingRiskScore.objects.all().order_by("-vulnerability_score", "-complaints_3yr")
+
+        min_score = self.request.query_params.get("min_score")
+        if min_score is not None:
+            try:
+                qs = qs.filter(vulnerability_score__gte=int(min_score))
+            except ValueError:
+                pass
+
+        is_chronic = self.request.query_params.get("is_chronic")
+        if is_chronic is not None:
+            qs = qs.filter(is_chronic=(is_chronic.lower() == "true"))
+
+        # borough encoded as first digit of community_board (1–5)
+        borough = self.request.query_params.get("borough")
+        if borough and borough in {"1", "2", "3", "4", "5"}:
+            qs = qs.filter(community_board__startswith=borough)
+
+        return qs
+
+
+class BuildingDetailView(RetrieveAPIView[BuildingRiskScore]):
+    queryset = BuildingRiskScore.objects.all()
+    serializer_class = BuildingRiskScoreSerializer
+    lookup_field = "bin"

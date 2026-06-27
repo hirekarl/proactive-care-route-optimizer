@@ -65,10 +65,22 @@ New to the repo? Read this section first.
 
 ### Data flow
 
-1. **Ingestion** — The backend periodically polls the NYC Open Data elevator-complaint API and writes new records to PostgreSQL.
-2. **Processing** — When a dispatcher loads a route, the backend runs a PostGIS geospatial query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
-3. **Delivery** — If an overlap is detected, the API response includes an `outageAlert` flag and, where available, alternative routing coordinates.
-4. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
+1. **Ingestion** — Three management commands populate the database:
+   - `ingest_outages` — polls the NYC Open Data elevator-complaint API and upserts `elevator_complaints`
+   - `ingest_weather` — fetches daily temperature maxima from Open-Meteo archive (2018–today) into `weather_days`
+   - `ingest_dfta` — fetches DFTA senior center (and optional provider) locations from NYC Open Data
+
+2. **Risk scoring** — `compute_risk_scores` runs after ingest commands and scores every building that appears in the complaint history:
+   - Identifies **chronic offenders** (≥1 complaint in 12mo AND ≥3 complaints in 3yr)
+   - Computes a 0–3 **composite vulnerability score**: +1 if a DFTA provider is within 0.5 mi, +1 if a senior center is within 0.5 mi, +1 if the building's community board is in the top tercile by summer complaint ratio
+   - Computes **heat correlation metrics** per building: `heat_ratio` (heat-week vs. non-heat-week complaint rate), Pearson r/p, and a confidence level
+   - Results are stored in `building_risk_scores` and exposed via `/api/buildings/`
+
+3. **Route alerting** — When a dispatcher loads a route, the backend runs a PostGIS `ST_DWithin` query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
+
+4. **Delivery** — The API response includes an `outage_alert` flag on each stop, and `/api/buildings/` provides ranked risk scores for the full building inventory.
+
+5. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
 
 Deployed on [Render](https://render.com) via Blueprint (`render.yaml`). The frontend proxies all `/api` requests to the Django backend.
 
@@ -287,10 +299,13 @@ The framework, library choices, and toolchain are Mitra's to evolve — these co
 |---|---|---|---|
 | NYC Open Data | DOB Elevator Complaints | `kqwi-7ncn` | Active complaint feed — the "possible outage" signal |
 | NYC Open Data | DOB NOW Safety Compliance | `e5aq-a4j2` | Maps BIN → lat/lon for complaint locations |
+| NYC Open Data | DFTA Senior Centers | `ygfr-ij6t` | Senior center locations for vulnerability proximity scoring |
 | NYC Planning | GeoSearch API | — | Fallback geocoding when a BIN has no device record |
-| Open-Meteo | Historical + Forecast | — | Heat forecast for predictive risk scoring |
+| Open-Meteo | Historical Archive | — | Daily temperature maxima for heat correlation; 2018–present |
 
 **Important:** `kqwi-7ncn` is not a real-time outage feed — it reflects complaints filed by residents/managers, typically hours to days after an actual stoppage. Alert copy should say "reported outage" or "active complaint," not "confirmed outage." See [`docs/nyc-open-data.md`](./docs/nyc-open-data.md) for the full integration guide, including the critical date-format gotcha, the ingest polling pattern, and the PostGIS schema.
+
+**Note on `ygfr-ij6t`:** The DFTA senior centers dataset has a typo in the `community_board` column name — it appears as `comminuty_board` (missing the second "n"). The ingest command handles this automatically.
 
 ---
 
@@ -332,6 +347,8 @@ The backend requires these env vars (Render generates/injects most of them via t
 | `DATABASE_URL` | Injected from `pcro-db` |
 | `DJANGO_DEBUG` | Set to `False` in `render.yaml` |
 | `ALLOWED_HOSTS` | Set to `.onrender.com` in `render.yaml` |
+| `SOCRATA_APP_TOKEN` | Optional; raises NYC Open Data rate limits |
+| `DFTA_PROVIDER_DATASET_ID` | Optional; Socrata resource ID for DFTA provider directory |
 
 ---
 

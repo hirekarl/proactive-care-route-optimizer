@@ -3,7 +3,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from api.models import Route, RouteStop
+from api.models import BuildingRiskScore, Route, RouteStop
 
 
 class OutageSerializer(serializers.Serializer):  # type: ignore[type-arg]
@@ -48,3 +48,30 @@ class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
 
     def validate_date(self, value: datetime.date) -> datetime.date:
         return value
+
+
+class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
+    class Meta:
+        model = BuildingRiskScore
+        fields = [
+            "bin",
+            "house_number",
+            "house_street",
+            "zip_code",
+            "community_board",
+            "lat",
+            "lon",
+            "complaints_1yr",
+            "complaints_3yr",
+            "is_chronic",
+            "vulnerability_score",
+            "score_provider",
+            "score_center",
+            "score_heat_cb",
+            "heat_ratio",
+            "pearson_r",
+            "pearson_p",
+            "n_complaints_analyzed",
+            "confidence",
+            "scored_at",
+        ]
