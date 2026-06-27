@@ -40,15 +40,35 @@ New to the repo? Read this section first.
 ## Architecture
 
 ```
-┌─────────────────────────────────┐      ┌────────────────────────────────┐
-│  Frontend (Mitra's domain)      │ ───▶ │  Django REST Framework (API)   │
-│  frontend/                      │      │  backend/                      │
-│  Currently: React 19 + Vite     │      └──────────────┬─────────────────┘
-└─────────────────────────────────┘                     │
-                                               ┌────────▼──────────┐
-                                               │  PostgreSQL (DB)   │
-                                               └───────────────────┘
+┌──────────────────────────────────────────────┐
+│  Frontend (Mitra's domain)                   │
+│  React SPA — two views:                      │
+│    • Dispatcher Dashboard                    │
+│    • Interactive Map (Mapbox or Leaflet)     │
+└────────────────────┬─────────────────────────┘
+                     │ /api/*
+                     ▼
+┌──────────────────────────────────────────────┐     ┌─────────────────────────┐
+│  Django REST Framework (Karl)                │────▶│  NYC Open Data API      │
+│  /api/routes, /api/outages, …                │     │  Elevator complaints     │
+│  Geospatial proximity logic                  │     │  (polled periodically)  │
+└────────────────────┬─────────────────────────┘     └─────────────────────────┘
+                     │
+                     ▼
+          ┌──────────────────────┐
+          │  PostgreSQL + PostGIS│
+          │  Routes, providers,  │
+          │  outage records,     │
+          │  ≤0.5-mile queries   │
+          └──────────────────────┘
 ```
+
+### Data flow
+
+1. **Ingestion** — The backend periodically polls the NYC Open Data elevator-complaint API and writes new records to PostgreSQL.
+2. **Processing** — When a dispatcher loads a route, the backend runs a PostGIS geospatial query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
+3. **Delivery** — If an overlap is detected, the API response includes an `outageAlert` flag and, where available, alternative routing coordinates.
+4. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
 
 Deployed on [Render](https://render.com) via Blueprint (`render.yaml`). The frontend proxies all `/api` requests to the Django backend.
 

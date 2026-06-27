@@ -82,16 +82,22 @@ Full product spec: `Senior-Care PRD - Proactive Care-Route Optimizer.docx`
 
 ## Architecture
 
+Three layers:
+
+- **Frontend** (Mitra) — React SPA with two main views: Dispatcher Dashboard and an Interactive Map (Mapbox or Leaflet). Framework subject to change.
+- **Backend** (Karl) — Django REST Framework. Exposes `/api/routes`, `/api/outages`, and related endpoints. Contains the proximity alert logic and periodically polls the NYC Open Data elevator-complaint API.
+- **Database** — PostgreSQL with the PostGIS extension. Stores provider locations, care recipient addresses, active routes, and ingested outage records. PostGIS powers the ≤0.5-mile geospatial proximity queries that are the core of the alert engine.
+
 ```
 frontend/         ← Mitra owns this; framework subject to change
-backend/          ← Django REST Framework API (Karl)
+backend/          ← Django REST Framework (Karl)
   src/
     core/         ← Django project: settings, urls, wsgi, asgi
-    api/          ← DRF app: expand here
+    api/          ← DRF app: routes, outages, proximity logic
   tests/
 ```
 
-Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the Django backend.
+Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the Django backend. NYC Open Data API query specifics TBD (Karl to document).
 
 ---
 
