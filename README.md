@@ -141,7 +141,7 @@ pre-commit --version
 
 ```bash
 # Clone and enter the project
-git clone <repo-url>
+git clone https://github.com/hirekarl/proactive-care-route-optimizer.git
 cd proactive-care-route-optimizer
 
 # Install git hooks (both paths — see Hook Installation below)
