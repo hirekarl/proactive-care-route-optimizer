@@ -144,8 +144,8 @@ pre-commit --version
 git clone https://github.com/hirekarl/proactive-care-route-optimizer.git
 cd proactive-care-route-optimizer
 
-# Install git hooks (both paths — see Hook Installation below)
-git config core.hooksPath .githooks
+# Install git hooks via pre-commit
+pre-commit install
 pre-commit install --hook-type commit-msg
 
 # ── Backend ──────────────────────────────────────────────
@@ -165,36 +165,25 @@ npm run dev                 # http://localhost:5173 (proxies /api → :8000)
 
 ## Hook Installation
 
-This project enforces two quality gates at commit time, via two complementary mechanisms.
-
-### 1. pre-commit framework (recommended)
-
-Handles ruff (Python lint/format), Prettier (TypeScript/CSS/JSON format), and the no-AI-attribution commit-msg check.
+All quality gates run through the [pre-commit](https://pre-commit.com) framework: ruff (Python lint/format), Prettier (TypeScript/CSS/JSON format), and the no-AI-attribution commit-msg check.
 
 ```bash
-# From repo root:
-pre-commit install --hook-type commit-msg
+# From repo root — run both lines:
+pre-commit install                        # pre-commit stage (ruff, prettier)
+pre-commit install --hook-type commit-msg # commit-msg stage (no-AI-attribution)
 ```
 
-Re-runs automatically on every `git commit`. To run manually on all files:
+Hooks re-run automatically on every `git commit`. To run manually on all files:
 
 ```bash
 pre-commit run --all-files
 ```
 
-### 2. Standalone `.githooks/commit-msg`
-
-A minimal shell script that enforces the no-AI-attribution rule without the pre-commit framework. Install by pointing git at this project's hooks directory:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-Both mechanisms enforce the same rule — run both for belt-and-suspenders protection.
-
 ### What gets blocked
 
 Any commit message containing a `Co-Authored-By:` line that references `claude` or `anthropic` (case-insensitive) is rejected at the hook level. Collaborators are expected to author their own commits. Remove the co-author line and recommit.
+
+> `.githooks/commit-msg` also exists in the repo as a standalone fallback for anyone who prefers not to use the pre-commit framework, but the framework is the standard for this project.
 
 ---
 

@@ -27,14 +27,14 @@ If any are missing, surface the install instructions from the README and stop.
 ### 2. Git hooks
 
 ```bash
-git config core.hooksPath   # must print: .githooks
+ls .git/hooks/pre-commit    # must exist
 ls .git/hooks/commit-msg    # must exist
 ```
 
-If either check fails, install:
+If either is missing, install:
 
 ```bash
-git config core.hooksPath .githooks
+pre-commit install
 pre-commit install --hook-type commit-msg
 ```
 
