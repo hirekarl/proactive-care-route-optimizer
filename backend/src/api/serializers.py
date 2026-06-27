@@ -2,6 +2,7 @@ import datetime
 from typing import Any
 
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 
@@ -94,8 +95,22 @@ class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[
             "n_complaints_analyzed",
             "confidence",
             "is_single_elevator",
+            "elevator_count_override",
             "scored_at",
         ]
+
+
+class BuildingUpdateSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
+    """Write serializer for PATCH /api/buildings/<bin>/."""
+
+    class Meta:
+        model = BuildingRiskScore
+        fields = ["elevator_count_override"]
+
+    def validate_elevator_count_override(self, value: int | None) -> int | None:
+        if value is not None and value < 1:
+            raise ValidationError("Must be a positive integer (1 = single elevator).")
+        return value
 
 
 class ProviderSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]

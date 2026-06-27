@@ -105,6 +105,9 @@ class BuildingRiskScore(models.Model):
 
     # None = unknown (ingest_elevator_devices not yet run, or no active device record found)
     is_single_elevator = models.BooleanField(null=True)
+    # Operator-supplied elevator count — overrides is_single_elevator when set.
+    # 1 → treated as single elevator; >1 → not single elevator; None → no override.
+    elevator_count_override = models.IntegerField(null=True)
 
     scored_at = models.DateTimeField(auto_now=True)
 

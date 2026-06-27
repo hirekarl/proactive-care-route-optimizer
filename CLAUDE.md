@@ -142,6 +142,7 @@ The `compute_risk_scores` command scores every building with any elevator compla
 | GET | `/api/routes/<id>/` | Route with per-stop outage alerts |
 | GET | `/api/buildings/` | All buildings with risk scores (filters: `min_score`, `is_chronic`, `borough`) |
 | GET | `/api/buildings/<bin>/` | Single building by BIN |
+| PATCH | `/api/buildings/<bin>/` | Set/clear `elevator_count_override` (int ≥ 1, or null to clear) |
 
 ### PostGIS note
 

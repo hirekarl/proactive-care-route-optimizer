@@ -2,6 +2,7 @@ import datetime
 from typing import Any
 
 from django.db import connection
+from django.shortcuts import get_object_or_404
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -11,6 +12,7 @@ from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 from api.serializers import (
     BuildingRiskScoreSerializer,
+    BuildingUpdateSerializer,
     EnrichedOutageSerializer,
     ProviderSerializer,
     RouteCreateSerializer,
@@ -44,7 +46,13 @@ ALL_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(brs.is_single_elevator, false) AS single_elevator
+        COALESCE(
+            CASE
+                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
+                ELSE brs.is_single_elevator
+            END,
+            false
+        ) AS single_elevator
     FROM elevator_complaints ec
     LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
     WHERE ec.status = 'ACTIVE' AND ec.location IS NOT NULL
@@ -64,7 +72,13 @@ NEARBY_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(brs.is_single_elevator, false) AS single_elevator,
+        COALESCE(
+            CASE
+                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
+                ELSE brs.is_single_elevator
+            END,
+            false
+        ) AS single_elevator,
         ST_Distance(
             ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
@@ -322,7 +336,20 @@ class BuildingListView(ListAPIView[BuildingRiskScore]):
         return qs
 
 
-class BuildingDetailView(RetrieveAPIView[BuildingRiskScore]):
-    queryset = BuildingRiskScore.objects.all()
-    serializer_class = BuildingRiskScoreSerializer
-    lookup_field = "bin"
+class BuildingDetailView(APIView):
+    """
+    GET  /api/buildings/<bin>/ — full risk score record
+    PATCH /api/buildings/<bin>/ — set/clear elevator_count_override
+    """
+
+    def get(self, request: Request, bin: str) -> Response:
+        building = get_object_or_404(BuildingRiskScore, bin=bin)
+        return Response(BuildingRiskScoreSerializer(building).data)
+
+    def patch(self, request: Request, bin: str) -> Response:
+        building = get_object_or_404(BuildingRiskScore, bin=bin)
+        serializer = BuildingUpdateSerializer(building, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        serializer.save()
+        return Response(BuildingRiskScoreSerializer(building).data)
