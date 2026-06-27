@@ -3,33 +3,25 @@ import { useEffect, useRef } from "react";
 import { landingFacts } from "./landingFacts";
 import { landingScrollState } from "./landingScrollState";
 
-const ORBIT_POSITIONS: { x: string; y: string }[] = [
-  { x: "70%", y: "22%" },
-  { x: "22%", y: "30%" },
-  { x: "78%", y: "48%" },
-  { x: "18%", y: "58%" },
-  { x: "72%", y: "72%" },
-  { x: "24%", y: "78%" },
-];
-
 export function FactCardsOverlay() {
   const refs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const offset = landingScrollState.offset;
-      const totalFacts = landingFacts.length;
+      const projections = landingScrollState.cards;
       landingFacts.forEach((_, idx) => {
         const el = refs.current[idx];
+        const proj = projections[idx];
         if (!el) return;
-        const revealAt = (idx + 0.6) / (totalFacts + 1);
-        const distance = Math.abs(offset - revealAt);
-        const opacity = Math.max(0, Math.min(1, 1 - distance * 5));
-        const lift = (1 - opacity) * 28;
-        const scale = 0.9 + opacity * 0.1;
-        el.style.opacity = opacity.toFixed(3);
-        el.style.transform = `translate(-50%, calc(-50% + ${lift.toFixed(1)}px)) scale(${scale.toFixed(3)})`;
+        if (!proj || !proj.visible) {
+          el.style.opacity = "0";
+          el.style.pointerEvents = "none";
+          return;
+        }
+        el.style.transform = `translate3d(${proj.x.toFixed(1)}px, ${proj.y.toFixed(1)}px, 0) translate(-50%, -50%) scale(${proj.scale.toFixed(3)})`;
+        el.style.opacity = proj.opacity.toFixed(3);
+        el.style.zIndex = String(proj.zIndex);
       });
       raf = requestAnimationFrame(tick);
     };
@@ -39,34 +31,29 @@ export function FactCardsOverlay() {
 
   return (
     <div className="landing__cards" aria-hidden>
-      {landingFacts.map((fact, idx) => {
-        const pos = ORBIT_POSITIONS[idx % ORBIT_POSITIONS.length];
-        return (
-          <div
-            key={fact.id}
-            ref={(el) => {
-              refs.current[idx] = el;
-            }}
-            className="glass-card landing__card"
-            style={
-              {
-                "--accent": fact.hue,
-                left: pos.x,
-                top: pos.y,
-                opacity: 0,
-              } as React.CSSProperties
-            }
-          >
-            <div className="glass-card__eyebrow">
-              <span className="glass-card__dot" />
-              {fact.eyebrow}
-            </div>
-            <div className="glass-card__value">{fact.value}</div>
-            <div className="glass-card__label">{fact.label}</div>
-            <p className="glass-card__detail">{fact.detail}</p>
+      {landingFacts.map((fact, idx) => (
+        <div
+          key={fact.id}
+          ref={(el) => {
+            refs.current[idx] = el;
+          }}
+          className="glass-card landing__card"
+          style={
+            {
+              "--accent": fact.hue,
+              opacity: 0,
+            } as React.CSSProperties
+          }
+        >
+          <div className="glass-card__eyebrow">
+            <span className="glass-card__dot" />
+            {fact.eyebrow}
           </div>
-        );
-      })}
+          <div className="glass-card__value">{fact.value}</div>
+          <div className="glass-card__label">{fact.label}</div>
+          <p className="glass-card__detail">{fact.detail}</p>
+        </div>
+      ))}
     </div>
   );
 }

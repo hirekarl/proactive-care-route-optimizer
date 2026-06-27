@@ -1,3 +1,17 @@
-export const landingScrollState = {
+export interface CardProjection {
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  visible: boolean;
+  depth: number;
+  zIndex: number;
+}
+
+export const landingScrollState: {
+  offset: number;
+  cards: CardProjection[];
+} = {
   offset: 0,
+  cards: [],
 };

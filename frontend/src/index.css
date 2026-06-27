@@ -150,9 +150,12 @@ body {
 
 .landing__card {
   position: absolute;
-  transform: translate(-50%, -50%);
+  top: 0;
+  left: 0;
+  width: 16rem;
   will-change: opacity, transform;
   transition: none;
+  transform-origin: center;
 }
 
 .landing__enter {
