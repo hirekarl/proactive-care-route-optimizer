@@ -1,6 +1,7 @@
 """Tests for building risk scoring pipeline and API endpoints."""
 
 import datetime
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -403,3 +404,183 @@ class TestIngestDFTA:
         sc = DFTASeniorCenter.objects.get(center_id="SC-INGEST-1")
         assert sc.community_board == "101"
         assert sc.lat == pytest.approx(40.758)
+
+
+@pytest.mark.django_db
+class TestBuildingOverride:
+    """Tests for PATCH /api/buildings/<bin>/ elevator_count_override."""
+
+    def _seed_building(
+        self,
+        bin_id: str,
+        is_single_elevator: bool | None = None,
+        elevator_count_override: int | None = None,
+    ) -> None:
+        from api.models import BuildingRiskScore
+
+        BuildingRiskScore.objects.update_or_create(
+            bin=bin_id,
+            defaults={
+                "house_number": "100",
+                "house_street": "Test St",
+                "zip_code": "10001",
+                "community_board": "101",
+                "lat": 40.758,
+                "lon": -73.985,
+                "complaints_1yr": 1,
+                "complaints_3yr": 3,
+                "is_chronic": True,
+                "vulnerability_score": 2,
+                "score_provider": 1,
+                "score_center": 1,
+                "score_heat_cb": 0,
+                "n_complaints_analyzed": 3,
+                "confidence": "medium",
+                "is_single_elevator": is_single_elevator,
+                "elevator_count_override": elevator_count_override,
+            },
+        )
+
+    def _seed_complaint(self, bin_id: str, complaint_number: str) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO elevator_complaints
+                  (complaint_number, bin, house_number, house_street, zip_code,
+                   community_board, date_entered, status, lat, lon, fetched_at)
+                VALUES (%s, %s, '100', 'Test St', '10001', '101',
+                        NOW(), 'ACTIVE', 40.758, -73.985, NOW())
+                ON CONFLICT (complaint_number) DO NOTHING
+                """,
+                [complaint_number, bin_id],
+            )
+            cursor.execute(
+                "UPDATE elevator_complaints"
+                " SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
+                " WHERE complaint_number = %s",
+                [-73.985, 40.758, complaint_number],
+            )
+
+    # ── endpoint surface ────────────────────────────────────────────────────
+
+    def test_patch_sets_single_elevator_override(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-001")
+        resp = client.patch(
+            "/api/buildings/B-OVR-001/",
+            data=json.dumps({"elevatorCountOverride": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["elevatorCountOverride"] == 1
+
+    def test_patch_sets_multi_elevator_override(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-002")
+        resp = client.patch(
+            "/api/buildings/B-OVR-002/",
+            data=json.dumps({"elevatorCountOverride": 4}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["elevatorCountOverride"] == 4
+
+    def test_patch_clears_override(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-003", elevator_count_override=1)
+        resp = client.patch(
+            "/api/buildings/B-OVR-003/",
+            data=json.dumps({"elevatorCountOverride": None}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["elevatorCountOverride"] is None
+
+    def test_patch_rejects_zero(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-004")
+        resp = client.patch(
+            "/api/buildings/B-OVR-004/",
+            data=json.dumps({"elevatorCountOverride": 0}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_patch_rejects_negative(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-005")
+        resp = client.patch(
+            "/api/buildings/B-OVR-005/",
+            data=json.dumps({"elevatorCountOverride": -1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_patch_404_for_unknown_bin(self) -> None:
+        client = Client()
+        resp = client.patch(
+            "/api/buildings/DOES-NOT-EXIST/",
+            data=json.dumps({"elevatorCountOverride": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 404
+
+    # ── SQL merge logic in outage responses ─────────────────────────────────
+
+    def test_override_1_overrides_unknown_dob(self) -> None:
+        """Override=1 on a DOB-unknown building makes singleElevator true in outages."""
+        client = Client()
+        self._seed_building("B-OVR-006", is_single_elevator=None)
+        self._seed_complaint("B-OVR-006", "C-OVR-006")
+
+        # Before override: DOB unknown → COALESCE → false
+        resp = client.get("/api/outages/")
+        item = next(o for o in resp.json() if o["bin"] == "B-OVR-006")
+        assert item["singleElevator"] is False
+
+        client.patch(
+            "/api/buildings/B-OVR-006/",
+            data=json.dumps({"elevatorCountOverride": 1}),
+            content_type="application/json",
+        )
+
+        resp = client.get("/api/outages/")
+        item = next(o for o in resp.json() if o["bin"] == "B-OVR-006")
+        assert item["singleElevator"] is True
+
+    def test_override_gt1_wins_over_dob_true(self) -> None:
+        """Override>1 makes singleElevator false even when DOB says is_single_elevator=True."""
+        client = Client()
+        self._seed_building("B-OVR-007", is_single_elevator=True)
+        self._seed_complaint("B-OVR-007", "C-OVR-007")
+
+        client.patch(
+            "/api/buildings/B-OVR-007/",
+            data=json.dumps({"elevatorCountOverride": 3}),
+            content_type="application/json",
+        )
+
+        resp = client.get("/api/outages/")
+        item = next(o for o in resp.json() if o["bin"] == "B-OVR-007")
+        assert item["singleElevator"] is False
+
+    def test_clearing_override_restores_dob_value(self) -> None:
+        """Clearing the override falls back to DOB is_single_elevator."""
+        client = Client()
+        # DOB says True, but an override of 3 is suppressing it
+        self._seed_building("B-OVR-008", is_single_elevator=True, elevator_count_override=3)
+        self._seed_complaint("B-OVR-008", "C-OVR-008")
+
+        resp = client.get("/api/outages/")
+        item = next(o for o in resp.json() if o["bin"] == "B-OVR-008")
+        assert item["singleElevator"] is False  # override wins
+
+        client.patch(
+            "/api/buildings/B-OVR-008/",
+            data=json.dumps({"elevatorCountOverride": None}),
+            content_type="application/json",
+        )
+
+        resp = client.get("/api/outages/")
+        item = next(o for o in resp.json() if o["bin"] == "B-OVR-008")
+        assert item["singleElevator"] is True  # DOB value restored
