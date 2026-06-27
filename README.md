@@ -39,38 +39,45 @@ New to the repo? Read this section first.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────┐
-│  Frontend (Mitra's domain)                   │
-│  React SPA — two views:                      │
-│    • Dispatcher Dashboard                    │
-│    • Interactive Map (Mapbox or Leaflet)     │
-└────────────────────┬─────────────────────────┘
-                     │ /api/*
-                     ▼
-┌──────────────────────────────────────────────┐     ┌─────────────────────────┐
-│  Django REST Framework (Karl)                │────▶│  NYC Open Data API      │
-│  /api/routes, /api/outages, …                │     │  Elevator complaints     │
-│  Geospatial proximity logic                  │     │  (polled periodically)  │
-└────────────────────┬─────────────────────────┘     └─────────────────────────┘
-                     │
-                     ▼
-          ┌──────────────────────┐
-          │  PostgreSQL + PostGIS│
-          │  Routes, providers,  │
-          │  outage records,     │
-          │  ≤0.5-mile queries   │
-          └──────────────────────┘
+```mermaid
+flowchart TD
+    Dispatcher(["Dispatcher"])
+
+    subgraph FE ["Frontend · React 19 + Vite · Mitra"]
+        Dashboard["Dispatcher Dashboard"]
+        MapView["Interactive Map"]
+    end
+
+    subgraph BE ["Backend · Django REST Framework · Karl"]
+        API["REST API\n/api/outages  /api/routes  /api/buildings\n/api/dashboard/summary  /api/providers"]
+        Pipeline["Ingest pipeline\ningest_outages · ingest_weather · ingest_dfta\ningest_elevator_devices · compute_risk_scores"]
+    end
+
+    DB[("PostgreSQL + PostGIS\nelevator_complaints · building_risk_scores\nweather_days · dfta_* · routes")]
+
+    NOD["NYC Open Data\nkqwi-7ncn · e5aq-a4j2 · juyv-2jek · ygfr-ij6t"]
+    OM["Open-Meteo\nHistorical Archive"]
+    GS["NYC Planning\nGeoSearch API"]
+
+    Dispatcher --> FE
+    FE -->|/api/*| API
+    API <-->|PostGIS ST_DWithin| DB
+    Pipeline -->|upsert| DB
+    Pipeline -->|poll| NOD
+    Pipeline -->|fetch| OM
+    API -.->|geocode route stops| GS
+    Pipeline -.->|geocode BIN fallback| GS
 ```
 
 ### Data flow
 
-1. **Ingestion** — Three management commands populate the database:
+1. **Ingestion** — Four management commands populate the database (run in order):
    - `ingest_outages` — polls the NYC Open Data elevator-complaint API and upserts `elevator_complaints`
    - `ingest_weather` — fetches daily temperature maxima from Open-Meteo archive (2018–today) into `weather_days`
    - `ingest_dfta` — fetches DFTA senior center (and optional provider) locations from NYC Open Data
+   - `ingest_elevator_devices` — two-step join through `e5aq-a4j2` and `juyv-2jek` to populate `building_risk_scores.is_single_elevator`; must run after `compute_risk_scores`
 
-2. **Risk scoring** — `compute_risk_scores` runs after ingest commands and scores every building that appears in the complaint history:
+2. **Risk scoring** — `compute_risk_scores` runs after the ingest commands and scores every building that appears in the complaint history:
    - Identifies **chronic offenders** (≥1 complaint in 12mo AND ≥3 complaints in 3yr)
    - Computes a 0–3 **composite vulnerability score**: +1 if a DFTA provider is within 0.5 mi, +1 if a senior center is within 0.5 mi, +1 if the building's community board is in the top tercile by summer complaint ratio
    - Computes **heat correlation metrics** per building: `heat_ratio` (heat-week vs. non-heat-week complaint rate), Pearson r/p, and a confidence level
