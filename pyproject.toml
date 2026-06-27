@@ -1,0 +1,11 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "semver"
+version_files = [
+    "backend/pyproject.toml:version",
+    "frontend/package.json:version",
+]
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+changelog_incremental = true

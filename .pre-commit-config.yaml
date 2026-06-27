@@ -1,0 +1,32 @@
+repos:
+  # Python: ruff lint + format (backend only)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # JavaScript/TypeScript: Prettier (frontend only)
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        files: ^frontend/
+        types_or: [javascript, jsx, ts, tsx, css, markdown, json, yaml]
+        additional_dependencies:
+          - prettier@3.5.3
+          - "@trivago/prettier-plugin-sort-imports@4.3.0"
+          - "prettier-plugin-tailwindcss@0.6.11"
+
+  # Commit message: block AI co-author attribution
+  - repo: local
+    hooks:
+      - id: no-ai-attribution
+        name: Block AI co-author attribution
+        language: pygrep
+        entry: '(?i)co-authored-by:.*\b(claude|anthropic)\b'
+        stages: [commit-msg]
+        types: [text]

@@ -1,0 +1,70 @@
+[project]
+name = "pcro-backend"
+version = "0.1.0"
+description = "Proactive Care-Route Optimizer — Django REST Framework API"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<6",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.6",
+    "python-decouple>=3.8",
+    "psycopg[binary]>=3.2",
+    "gunicorn>=23",
+]
+
+[dependency-groups]
+dev = [
+    "django-stubs[compatible-mypy]>=5.2",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+    "ruff>=0.11",
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6",
+    "factory-boy>=3.3",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B"]
+ignore = ["B008"]  # do not perform function calls in default argument (DRF pattern)
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "api"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = "decouple"
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "core.settings"
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.settings"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
