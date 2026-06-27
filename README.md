@@ -1,6 +1,6 @@
 # Proactive Care-Route Optimizer
 
-An early-warning system that helps DFTA-contracted home-service providers anticipate and route around elevator outages before they disrupt senior care delivery — using heat forecasts, chronic elevator building scores, and provider location data from public sources.
+An early-warning system that shifts NYC senior-care delivery from reactive to proactive — flagging elevator outages and heat-driven failure risk *before* routes go out, so seniors don't miss meals and care workers don't arrive stranded.
 
 Full product specification: [`Senior-Care PRD - Proactive Care-Route Optimizer.docx`](./Senior-Care%20PRD%20-%20Proactive%20Care-Route%20Optimizer.docx)
 
@@ -17,8 +17,23 @@ Key evidence from the EDA phase:
 - **79%** of DFTA providers are within 0.25 miles of a chronic offender building
 - Heat weeks (≥90°F) produce **1.20× baseline complaint volume** (Pearson r = 0.343, p < 0.001)
 - The Bronx has **2.4×** the citywide rate of chronic offenders per 10,000 seniors
+- **135 confirmed single-elevator high-risk buildings** where any outage means total inaccessibility
 
 > **Note:** This project uses public data analysis — not AI — to generate predictions.
+
+---
+
+## Where to Start
+
+New to the repo? Read this section first.
+
+1. **Read the PRD.** The `.docx` at the repo root has the full problem context, user journeys, and requirements. The README summarizes it, but the PRD is the source of truth for what we're building and why.
+
+2. **Know the team.** Karl owns the backend and data pipeline. **Mitra owns the frontend** — if you're touching `frontend/`, coordinate with her before making architectural changes. The frontend framework (currently React 19 + Vite) is hers to evolve.
+
+3. **Get your environment running.** Follow [Getting Started](#getting-started) below. The session-start checks in `CLAUDE.md` cover the same ground for AI-assisted work.
+
+4. **Start from a branch.** Never commit to `main` directly. Branch as `<initials>/<description>`, open a PR, and get a review before merging.
 
 ---
 
@@ -26,10 +41,10 @@ Key evidence from the EDA phase:
 
 ```
 ┌─────────────────────────────────┐      ┌────────────────────────────────┐
-│  React 19 + Vite + Tailwind     │ ───▶ │  Django REST Framework (API)   │
+│  Frontend (Mitra's domain)      │ ───▶ │  Django REST Framework (API)   │
 │  frontend/                      │      │  backend/                      │
-└─────────────────────────────────┘      └──────────────┬─────────────────┘
-                                                        │
+│  Currently: React 19 + Vite     │      └──────────────┬─────────────────┘
+└─────────────────────────────────┘                     │
                                                ┌────────▼──────────┐
                                                │  PostgreSQL (DB)   │
                                                └───────────────────┘
@@ -41,13 +56,64 @@ Deployed on [Render](https://render.com) via Blueprint (`render.yaml`). The fron
 
 ## Prerequisites
 
-| Tool | Version | Install |
-|---|---|---|
-| [uv](https://docs.astral.sh/uv/) | ≥ 0.6 | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Python | 3.12 (managed by uv) | — |
-| Node.js | ≥ 20 | [nodejs.org](https://nodejs.org) |
-| PostgreSQL | ≥ 15 | [postgresql.org](https://www.postgresql.org/download/) |
-| [pre-commit](https://pre-commit.com) | ≥ 3 | `pip install pre-commit` |
+| Tool | Version |
+|---|---|
+| [uv](https://docs.astral.sh/uv/) | ≥ 0.6 |
+| Python | 3.12 (managed by uv) |
+| Node.js | ≥ 20 |
+| npm | ≥ 10 (bundled with Node.js) |
+| PostgreSQL | ≥ 15 |
+| [pre-commit](https://pre-commit.com) | ≥ 3 |
+
+### Installing uv
+
+`uv` manages both Python versions and packages for this project. If you don't have it:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Verify
+uv --version
+```
+
+You do **not** need to install Python separately — `uv sync` downloads and pins Python 3.12 automatically.
+
+### Installing Node.js and npm
+
+Node.js 20+ is required for the frontend. npm ships with it.
+
+```bash
+# macOS — via Homebrew
+brew install node
+
+# macOS / Linux — via nvm (recommended if you manage multiple projects)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+nvm install 20
+nvm use 20
+
+# Windows — download the installer from nodejs.org
+# https://nodejs.org/en/download
+
+# Verify
+node --version   # should print v20.x.x or higher
+npm --version    # should print 10.x.x or higher
+```
+
+### Installing pre-commit
+
+```bash
+pip install pre-commit
+
+# Or via Homebrew on macOS
+brew install pre-commit
+
+# Verify
+pre-commit --version
+```
 
 ---
 
@@ -79,7 +145,7 @@ npm run dev                 # http://localhost:5173 (proxies /api → :8000)
 
 ## Hook Installation
 
-This project enforces two quality gates at commit time, via two complementary mechanisms:
+This project enforces two quality gates at commit time, via two complementary mechanisms.
 
 ### 1. pre-commit framework (recommended)
 
@@ -178,8 +244,11 @@ uv run pytest                    # tests
 - Target: Python 3.12
 - mypy: strict mode with `django-stubs` and `djangorestframework-stubs`
 - Google-style docstrings
+- Tests use a real Postgres database — no mocking the DB layer
 
 ### Frontend (TypeScript)
+
+**Mitra owns the frontend.** The current toolchain:
 
 | Tool | Role | Config |
 |---|---|---|
@@ -199,6 +268,8 @@ npx tsc --noEmit        # type-check
 - Imports sorted automatically (react → packages → internal)
 - Accessibility rules enforced by `eslint-plugin-jsx-a11y`
 
+The framework, library choices, and toolchain are Mitra's to evolve — these commands may change if she changes the stack.
+
 ---
 
 ## CI/CD
@@ -210,7 +281,7 @@ GitHub Actions workflows run on every push and pull request:
 | `backend-ci.yml` | Changes to `backend/**` | ruff lint, ruff format, mypy, pytest (with Postgres service container) |
 | `frontend-ci.yml` | Changes to `frontend/**` | Prettier check, TypeScript (`tsc --noEmit`) |
 
-Workflows are defined in `.github/workflows/`. When this folder is extracted into its own repository, move the `.github/` directory to the repo root.
+Workflows are defined in `.github/workflows/`.
 
 ---
 
@@ -247,6 +318,7 @@ The backend requires these env vars (Render generates/injects most of them via t
 ```text
 proactive-care-route-optimizer/
 ├── README.md
+├── CLAUDE.md                  Claude Code session config and project guide
 ├── CHANGELOG.md
 ├── .gitattributes             LF line endings enforced
 ├── .pre-commit-config.yaml    ruff + prettier + no-AI-attribution
@@ -268,8 +340,8 @@ proactive-care-route-optimizer/
 │       ├── core/              Django project (settings, urls, wsgi, asgi)
 │       └── api/               DRF app (health check; expand here)
 │   └── tests/
-└── frontend/
-    ├── package.json           React 19, Vite 6, TypeScript, Tailwind, Prettier
+└── frontend/                  Mitra's domain — framework subject to change
+    ├── package.json
     ├── vite.config.ts
     ├── tailwind.config.ts
     ├── eslint.config.js
@@ -283,8 +355,8 @@ proactive-care-route-optimizer/
 
 ## Team
 
-| Person | Handle | Role |
+| Person | GitHub | Role |
 |---|---|---|
-| Karl Johnson | @hirekarl | Elevator data & NYC Open Data pipeline |
-| Mitra Kermanian | @MITRAKER | DFTA senior care partner & provider data |
+| Karl Johnson | @hirekarl | Backend, NYC Open Data pipeline, elevator risk model |
+| Mitra Kermanian | @MITRAKER | **Frontend owner** — DFTA data, provider data, UI/UX |
 | Mofazzal Hossain | @mofazzal0413 | Pursuit AI-Native Fellow |
