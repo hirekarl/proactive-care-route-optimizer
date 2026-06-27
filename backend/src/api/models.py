@@ -55,6 +55,8 @@ class DFTAProvider(models.Model):
 
     provider_id = models.TextField(primary_key=True)
     name = models.TextField(blank=True)
+    borough = models.TextField(blank=True)
+    address = models.TextField(blank=True)
     lat = models.FloatField()
     lon = models.FloatField()
 

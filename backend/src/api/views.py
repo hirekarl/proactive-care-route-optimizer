@@ -29,9 +29,7 @@ BOROUGH_BY_CODE = {
     "5": "Staten Island",
 }
 
-# Hardcoded from EDA — heat weeks produce 1.20× baseline complaint volume.
-# Replace with a live query once per-building heat_ratio aggregation is wired up.
-HEAT_RISK_MULTIPLIER = 1.20
+_HEAT_RISK_MULTIPLIER_FALLBACK = 1.20  # EDA baseline; used when no scored buildings exist yet
 
 ALL_OUTAGES_SQL = """
     SELECT
@@ -202,6 +200,22 @@ class DashboardSummaryView(APIView):
             last_ingest_at_raw = cursor.fetchone()[0]
             last_ingest_at = last_ingest_at_raw.isoformat() if last_ingest_at_raw else None
 
+            cursor.execute(
+                """
+                SELECT AVG(heat_ratio)
+                FROM building_risk_scores
+                WHERE is_chronic = true
+                  AND confidence IN ('high', 'medium')
+                  AND heat_ratio IS NOT NULL
+                """
+            )
+            heat_ratio_avg: float | None = cursor.fetchone()[0]
+            heat_risk_multiplier = (
+                round(float(heat_ratio_avg), 4)
+                if heat_ratio_avg is not None
+                else _HEAT_RISK_MULTIPLIER_FALLBACK
+            )
+
             # Borough breakdown — first digit of community_board encodes the borough
             cursor.execute(
                 """
@@ -258,7 +272,7 @@ class DashboardSummaryView(APIView):
                 "providers_affected": 0,  # stub — see docs/deferred-frontend-api-gaps.md
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
-                "heat_risk_multiplier": HEAT_RISK_MULTIPLIER,
+                "heat_risk_multiplier": heat_risk_multiplier,
                 "last_ingest_at": last_ingest_at,
                 "borough_breakdown": borough_breakdown,
                 "outages_trend": outages_trend,

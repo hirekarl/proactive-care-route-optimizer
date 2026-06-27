@@ -105,10 +105,20 @@ class Command(BaseCommand):
             if lonlat is None:
                 continue
             lon, lat = lonlat
+            street = (
+                row.get("address")
+                or (
+                    (row.get("house_number") or "").strip()
+                    + " "
+                    + (row.get("street_name") or "").strip()
+                ).strip()
+            )
             providers.append(
                 DFTAProvider(
                     provider_id=str(provider_id),
                     name=row.get("provider_name") or row.get("name", ""),
+                    borough=row.get("borough", ""),
+                    address=street,
                     lat=lat,
                     lon=lon,
                 )

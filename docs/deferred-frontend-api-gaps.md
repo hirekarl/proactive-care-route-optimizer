@@ -52,26 +52,20 @@ have at least one at-risk stop.
 
 ---
 
-## 6. `Provider.borough` — always `""`
+## 6. `Provider.borough` — ~~always `""`~~ **CLOSED**
 
-**Stubbed in:** `api/serializers.py` (`ProviderSerializer`)
-**Why:** `DFTAProvider` model only stores `provider_id`, `name`, `lat`,
-`lon`. The DFTA provider dataset schema varies by contract cycle; no
-borough column was captured at ingest time.
-**To close:** Add a `borough` field to `DFTAProvider`, populate it
-during `ingest_dfta` (derive from first digit of `community_board` if
-present in the source data, or reverse-geocode from lat/lon), and
-expose it in `ProviderSerializer`.
+**Closed by:** `DFTAProvider.borough` field (migration `0005`). Stored
+directly from `row.get("borough", "")` during `ingest_dfta`; the raw
+DFTA provider dataset carries a `borough` column with the full borough
+name (e.g., "Bronx"). `ProviderSerializer` now reads the model field.
 
 ---
 
-## 7. `Provider.address` — always `""`
+## 7. `Provider.address` — ~~always `""`~~ **CLOSED**
 
-**Stubbed in:** `api/serializers.py` (`ProviderSerializer`)
-**Why:** Same model gap as Gap 6. The provider dataset may carry address
-fields under varying column names depending on the year of the contract.
-**To close:** Capture `address` (or `house_number` + `street_name`) in
-`DFTAProvider` during ingest and surface it in the serializer.
+**Closed by:** `DFTAProvider.address` field (migration `0005`). Stored
+as `row.get("address") or house_number + " " + street_name` during
+`ingest_dfta`. `ProviderSerializer` now reads the model field.
 
 ---
 
@@ -119,13 +113,9 @@ on severity + floor + elevator type.
 
 ---
 
-## 11. `DashboardSummary.heatRiskMultiplier` — hardcoded `1.20`
+## 11. `DashboardSummary.heatRiskMultiplier` — ~~hardcoded `1.20`~~ **CLOSED**
 
-**Stubbed in:** `api/views.py` (`HEAT_RISK_MULTIPLIER = 1.20`)
-**Why:** The 1.20× figure comes from the EDA (Pearson r across 2018–2026
-complaint data). The per-building `heat_ratio` field exists in
-`building_risk_scores`, but a live citywide aggregate has not been wired
-up to a single summary number.
-**To close:** Add a query to `DashboardSummaryView` that computes a
-weighted mean of `heat_ratio` across all `is_chronic = true` buildings
-with `confidence IN ('high', 'medium')`.
+**Closed by:** Live `AVG(heat_ratio)` query in `DashboardSummaryView`
+across `is_chronic = true` buildings with `confidence IN ('high', 'medium')`
+and non-null `heat_ratio`. Falls back to `1.20` when `building_risk_scores`
+is empty or no qualifying buildings have heat data yet.
