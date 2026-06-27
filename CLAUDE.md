@@ -105,13 +105,16 @@ Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the D
 
 ```bash
 cd backend
-uv run python manage.py ingest_outages      # elevator complaints → elevator_complaints
-uv run python manage.py ingest_weather      # Open-Meteo archive → weather_days
-uv run python manage.py ingest_dfta         # DFTA senior centers → dfta_senior_centers
-uv run python manage.py compute_risk_scores # chronic offenders + scores → building_risk_scores
+uv run python manage.py ingest_outages          # elevator complaints → elevator_complaints
+uv run python manage.py ingest_weather          # Open-Meteo archive → weather_days
+uv run python manage.py ingest_dfta             # DFTA senior centers → dfta_senior_centers
+uv run python manage.py compute_risk_scores     # chronic offenders + scores → building_risk_scores
+uv run python manage.py ingest_elevator_devices # DOB device details → building_risk_scores.is_single_elevator
 ```
 
 `ingest_dfta` skips provider ingestion unless `DFTA_PROVIDER_DATASET_ID` is set in `.env`.
+
+`ingest_elevator_devices` must run after `compute_risk_scores` — it updates rows that command creates. Two-step join: `e5aq-a4j2` (BIN → device numbers) → `juyv-2jek` (device number → `only_elevator_in_building`). The `juyv-2jek` dataset has no BIN column — never query it directly by BIN. Socrata omits null fields from JSON responses; a missing `only_elevator_in_building` key means unknown, not `false`. See `docs/nyc-open-data.md` for dataset IDs.
 
 ### Building risk scoring
 

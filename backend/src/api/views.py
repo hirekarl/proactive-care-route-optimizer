@@ -43,7 +43,8 @@ ALL_OUTAGES_SQL = """
         ec.status,
         ec.lat,
         ec.lon,
-        COALESCE(brs.is_chronic, false) AS chronic_offender
+        COALESCE(brs.is_chronic, false) AS chronic_offender,
+        COALESCE(brs.is_single_elevator, false) AS single_elevator
     FROM elevator_complaints ec
     LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
     WHERE ec.status = 'ACTIVE' AND ec.location IS NOT NULL
@@ -63,6 +64,7 @@ NEARBY_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
+        COALESCE(brs.is_single_elevator, false) AS single_elevator,
         ST_Distance(
             ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
@@ -122,8 +124,6 @@ def _enrich_outage_row(row: dict[str, Any]) -> dict[str, Any]:
         "borough": borough,
         "address": address,
         "lng": row["lon"],
-        # singleElevator not yet in data model — see docs/deferred-frontend-api-gaps.md
-        "single_elevator": False,
     }
 
 
@@ -180,6 +180,10 @@ class DashboardSummaryView(APIView):
             active_outages: int = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM building_risk_scores WHERE is_chronic = true")
             chronic_offenders: int = cursor.fetchone()[0]
+            cursor.execute(
+                "SELECT COUNT(*) FROM building_risk_scores WHERE is_single_elevator = true"
+            )
+            single_elevator_buildings: int = cursor.fetchone()[0]
             cursor.execute("SELECT MAX(fetched_at) FROM elevator_complaints")
             last_ingest_at_raw = cursor.fetchone()[0]
             last_ingest_at = last_ingest_at_raw.isoformat() if last_ingest_at_raw else None
@@ -239,7 +243,7 @@ class DashboardSummaryView(APIView):
                 "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
                 "providers_affected": 0,  # stub — see docs/deferred-frontend-api-gaps.md
                 "chronic_offenders": chronic_offenders,
-                "single_elevator_buildings": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "single_elevator_buildings": single_elevator_buildings,
                 "heat_risk_multiplier": HEAT_RISK_MULTIPLIER,
                 "last_ingest_at": last_ingest_at,
                 "borough_breakdown": borough_breakdown,

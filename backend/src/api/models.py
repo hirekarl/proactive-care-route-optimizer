@@ -103,6 +103,9 @@ class BuildingRiskScore(models.Model):
     n_complaints_analyzed = models.IntegerField()
     confidence = models.TextField()  # 'high' | 'medium' | 'low'
 
+    # None = unknown (ingest_elevator_devices not yet run, or no active device record found)
+    is_single_elevator = models.BooleanField(null=True)
+
     scored_at = models.DateTimeField(auto_now=True)
 
     class Meta:

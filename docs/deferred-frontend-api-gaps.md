@@ -6,25 +6,20 @@ was stubbed, why, and what would be needed to close the gap.
 
 ---
 
-## 1. `Outage.singleElevator` — always `false`
+## 1. `Outage.singleElevator` — ~~always `false`~~ **CLOSED**
 
-**Stubbed in:** `api/views.py` (`_enrich_outage_row`)
-**Why:** The DOB Elevator Complaints dataset (`kqwi-7ncn`) does not carry
-a field indicating whether a building has a single elevator. The DOB
-Elevator Devices dataset (`bc8t-ecyu`) contains per-device records that
-could be grouped by BIN to derive a `single_elevator` flag, but it has
-not been ingested.
-**To close:** Add an `ingest_elevator_devices` management command that
-fetches `bc8t-ecyu`, groups by BIN, and writes `is_single_elevator`
-(bool) to `building_risk_scores`. Surface that column in
-`EnrichedOutageSerializer` and `BuildingRiskScoreSerializer`.
+**Closed by:** `ingest_elevator_devices` management command +
+`building_risk_scores.is_single_elevator` column (migration `0003`).
+Two-step join: `e5aq-a4j2` (BIN → device numbers) → `juyv-2jek`
+(`only_elevator_in_building`). SQL uses `COALESCE(brs.is_single_elevator, false)`;
+unknown buildings default to `false` (no false-positive risk flags).
 
 ---
 
-## 2. `DashboardSummary.singleElevatorBuildings` — always `0`
+## 2. `DashboardSummary.singleElevatorBuildings` — ~~always `0`~~ **CLOSED**
 
-**Stubbed in:** `api/views.py` (`DashboardSummaryView`)
-**Depends on:** Gap 1 — same data source.
+**Closed by:** Same as Gap 1. `DashboardSummaryView` now queries
+`COUNT(*) FROM building_risk_scores WHERE is_single_elevator = true`.
 
 ---
 

@@ -93,6 +93,7 @@ class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[
             "pearson_p",
             "n_complaints_analyzed",
             "confidence",
+            "is_single_elevator",
             "scored_at",
         ]
 
