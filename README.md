@@ -149,6 +149,37 @@ pre-commit --version
 
 ---
 
+## Local database setup
+
+This project requires PostgreSQL with the PostGIS extension. Two options:
+
+### Option A — Neon (free cloud Postgres, recommended for quick setup)
+
+1. Create a free project at [neon.tech](https://neon.tech).
+2. In the Neon dashboard go to **Database → Extensions** and enable `postgis` (or run `CREATE EXTENSION postgis;` in the SQL editor).
+3. Copy the connection string from **Dashboard → Connection Details**. It looks like:
+   ```
+   postgresql://user:password@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+   ```
+4. Paste it as `DATABASE_URL` in `backend/.env`.
+
+> **Note:** Use the **direct connection** string, not the pooled one. Neon's direct connection supports `CREATE EXTENSION` needed by the migrations. The `?sslmode=require` suffix is handled automatically.
+
+### Option B — Docker (matches CI exactly, works offline)
+
+```bash
+docker run --name pcro-db \
+  -e POSTGRES_USER=pcro \
+  -e POSTGRES_PASSWORD=pcro \
+  -e POSTGRES_DB=pcro \
+  -p 5432:5432 \
+  -d postgis/postgis:16-3.4
+```
+
+Then set `DATABASE_URL=postgresql://pcro:pcro@localhost:5432/pcro` in `backend/.env`.
+
+---
+
 ## Getting Started
 
 ```bash
@@ -162,7 +193,7 @@ pre-commit install --hook-type commit-msg
 
 # ── Backend ──────────────────────────────────────────────
 cd backend
-cp .env.example .env        # fill in DJANGO_SECRET_KEY and DATABASE_URL
+cp .env.example .env        # fill in DJANGO_SECRET_KEY and DATABASE_URL (see above)
 uv sync                     # installs Python + all dependencies
 uv run python manage.py migrate
 uv run python manage.py runserver   # http://localhost:8000
