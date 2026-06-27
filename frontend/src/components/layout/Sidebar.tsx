@@ -1,7 +1,7 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 
 const navItems = [
-  { to: "/", label: "Dashboard", end: true, icon: GridIcon },
+  { to: "/dashboard", label: "Dashboard", end: true, icon: GridIcon },
   { to: "/map", label: "Outage Map", end: false, icon: MapIcon },
   { to: "/outages", label: "Outages", end: false, icon: AlertIcon },
   { to: "/providers", label: "Providers", end: false, icon: BuildingIcon },
@@ -10,7 +10,7 @@ const navItems = [
 export function Sidebar() {
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-      <div className="flex items-center gap-2 px-5 py-5">
+      <Link to="/" className="flex items-center gap-2 px-5 py-5 hover:bg-slate-50">
         <span
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"
           aria-hidden="true"
@@ -21,7 +21,7 @@ export function Sidebar() {
           <p className="text-sm font-semibold text-slate-900">Care-Route</p>
           <p className="text-xs text-slate-500">Optimizer</p>
         </div>
-      </div>
+      </Link>
       <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
         {navItems.map(({ to, label, end, icon: Icon }) => (
           <NavLink

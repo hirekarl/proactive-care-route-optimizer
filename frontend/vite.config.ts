@@ -18,6 +18,7 @@ export default defineConfig({
           react: ["react", "react-dom", "react-router-dom"],
           charts: ["recharts"],
           map: ["leaflet", "react-leaflet"],
+          three: ["three", "@react-three/fiber", "@react-three/drei"],
         },
       },
     },

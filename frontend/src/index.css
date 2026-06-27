@@ -25,3 +25,256 @@ body {
 .leaflet-container {
   font: inherit;
 }
+
+/* ---------- 3D landing page ---------- */
+
+.landing {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(56, 189, 248, 0.18), transparent 60%),
+    radial-gradient(ellipse at 30% 100%, rgba(167, 139, 250, 0.18), transparent 60%), #020617;
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.landing__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.landing__chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2rem;
+  pointer-events: none;
+}
+
+.landing__chrome > * {
+  pointer-events: auto;
+}
+
+.landing__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: rgba(248, 250, 252, 0.85);
+}
+
+.landing__brand-mark {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4rem;
+  background: linear-gradient(135deg, #38bdf8, #a78bfa);
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.6);
+}
+
+.landing__skip {
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: rgba(248, 250, 252, 0.85);
+  font-size: 0.8rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background 200ms;
+}
+
+.landing__skip:hover {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.landing__hero {
+  position: absolute;
+  top: 18%;
+  left: 6%;
+  max-width: 30rem;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.landing__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  color: rgba(125, 211, 252, 0.9);
+  margin: 0 0 0.75rem;
+}
+
+.landing__title {
+  font-size: clamp(2.2rem, 4.6vw, 4rem);
+  line-height: 1.05;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  background: linear-gradient(120deg, #ffffff, #bae6fd 40%, #fbcfe8 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.landing__lede {
+  font-size: 1rem;
+  color: rgba(226, 232, 240, 0.8);
+  line-height: 1.55;
+  margin: 0 0 1.5rem;
+}
+
+.landing__scrollhint {
+  display: inline-block;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #bae6fd;
+  font-size: 0.85rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 9999px;
+  animation: landing-bounce 2.6s ease-in-out infinite;
+}
+
+.landing__cards {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.landing__card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  will-change: opacity, transform;
+  transition: none;
+}
+
+.landing__enter {
+  position: absolute;
+  left: 50%;
+  bottom: 5rem;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+@keyframes landing-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+/* ---------- Glassmorphism fact card ---------- */
+
+.glass-card {
+  --accent: #38bdf8;
+  width: 18rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1.1rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 24px 60px -20px rgba(2, 6, 23, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 40px -10px var(--accent);
+  color: #f8fafc;
+  font-family: inherit;
+}
+
+.glass-card__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.62rem;
+  color: rgba(226, 232, 240, 0.8);
+  margin-bottom: 0.75rem;
+}
+
+.glass-card__dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.glass-card__value {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  background: linear-gradient(135deg, #fff, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glass-card__label {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: rgba(226, 232, 240, 0.7);
+  font-weight: 500;
+}
+
+.glass-card__detail {
+  margin: 0.85rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(241, 245, 249, 0.85);
+}
+
+/* ---------- Enter button ---------- */
+
+.enter-button {
+  pointer-events: auto;
+  position: relative;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.95), rgba(167, 139, 250, 0.95));
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  padding: 0.95rem 2.2rem;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 4px rgba(56, 189, 248, 0.15),
+    0 18px 50px -10px rgba(56, 189, 248, 0.65),
+    0 8px 24px -6px rgba(167, 139, 250, 0.55);
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.enter-button:hover {
+  transform: scale(1.04);
+  box-shadow:
+    0 0 0 6px rgba(56, 189, 248, 0.2),
+    0 22px 60px -8px rgba(56, 189, 248, 0.8),
+    0 10px 28px -4px rgba(167, 139, 250, 0.7);
+}
+
+.enter-button__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.enter-button__chev {
+  font-size: 1.1rem;
+}
