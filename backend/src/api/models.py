@@ -50,6 +50,17 @@ class WeatherDay(models.Model):
         db_table = "weather_days"
 
 
+class WeatherForecast(models.Model):
+    """7-day temperature forecast from Open-Meteo (NYC, America/New_York). Replaced daily."""
+
+    date = models.DateField(primary_key=True)
+    temp_max_f = models.FloatField()
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "weather_forecasts"
+
+
 class DFTAProvider(models.Model):
     """DFTA-contracted provider location."""
 

@@ -107,12 +107,15 @@ Deployed on Render via `render.yaml` Blueprint. Frontend proxies `/api` to the D
 cd backend
 uv run python manage.py ingest_outages          # elevator complaints → elevator_complaints
 uv run python manage.py ingest_weather          # Open-Meteo archive → weather_days
+uv run python manage.py ingest_forecast         # Open-Meteo 7-day forecast → weather_forecasts
 uv run python manage.py ingest_dfta             # DFTA senior centers → dfta_senior_centers
 uv run python manage.py compute_risk_scores     # chronic offenders + scores → building_risk_scores
 uv run python manage.py ingest_elevator_devices # DOB device details → building_risk_scores.is_single_elevator
 ```
 
 `ingest_dfta` skips provider ingestion unless `DFTA_PROVIDER_DATASET_ID` is set in `.env`.
+
+`ingest_forecast` should be run daily (replaces all rows each run). `weather_forecasts` is consumed by `GET /api/dashboard/summary/` to populate `heatForecast`. If the table is empty, the dashboard returns `heatForecast.forecast = []` with `daysAbove90 = 0`.
 
 `ingest_elevator_devices` must run after `compute_risk_scores` — it updates rows that command creates. Two-step join: `e5aq-a4j2` (BIN → device numbers) → `juyv-2jek` (device number → `only_elevator_in_building`). The `juyv-2jek` dataset has no BIN column — never query it directly by BIN. Socrata omits null fields from JSON responses; a missing `only_elevator_in_building` key means unknown, not `false`. See `docs/nyc-open-data.md` for dataset IDs.
 
@@ -138,6 +141,8 @@ The `compute_risk_scores` command scores every building with any elevator compla
 |---|---|---|
 | GET | `/api/health/` | Health check |
 | GET | `/api/outages/?lat=&lon=` | Active complaints within 0.5 mi of a point |
+| GET | `/api/dashboard/summary/` | Aggregate stats + heat forecast for the dispatcher dashboard |
+| GET | `/api/providers/` | DFTA provider locations |
 | POST | `/api/routes/` | Create a route with geocoded stops |
 | GET | `/api/routes/<id>/` | Route with per-stop outage alerts |
 | GET | `/api/buildings/` | All buildings with risk scores (filters: `min_score`, `is_chronic`, `borough`) |

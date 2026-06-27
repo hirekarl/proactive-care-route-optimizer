@@ -246,6 +246,9 @@ class DashboardSummaryView(APIView):
             )
             trend_rows = cursor.fetchall()
 
+            cursor.execute("SELECT date, temp_max_f FROM weather_forecasts ORDER BY date")
+            forecast_rows = cursor.fetchall()
+
         borough_breakdown = [
             {
                 "borough": BOROUGH_BY_CODE.get(str(code), str(code)),
@@ -265,6 +268,24 @@ class DashboardSummaryView(APIView):
             for d, count in trend_rows
         ]
 
+        forecast_temps = [float(t) for _, t in forecast_rows]
+        forecast_days = [
+            {
+                "date": d.isoformat() if isinstance(d, datetime.date) else str(d),
+                "temp_max_f": round(float(t), 1),
+                "is_heat_day": float(t) >= 90.0,
+            }
+            for d, t in forecast_rows
+        ]
+        days_above_90 = sum(1 for t in forecast_temps if t >= 90.0)
+        peak_temp_f: float | None = max(forecast_temps) if forecast_temps else None
+        heat_forecast = {
+            "is_heat_week": days_above_90 >= 3,
+            "days_above_90": days_above_90,
+            "peak_temp_f": peak_temp_f,
+            "forecast": forecast_days,
+        }
+
         return Response(
             {
                 "active_outages": active_outages,
@@ -273,6 +294,7 @@ class DashboardSummaryView(APIView):
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
                 "heat_risk_multiplier": heat_risk_multiplier,
+                "heat_forecast": heat_forecast,
                 "last_ingest_at": last_ingest_at,
                 "borough_breakdown": borough_breakdown,
                 "outages_trend": outages_trend,
