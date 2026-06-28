@@ -71,6 +71,10 @@ jobs:
         run: uv sync --frozen
 
       - name: mypy
+        env:
+          DJANGO_SECRET_KEY: ci-secret-key-not-for-production
+          DATABASE_URL: sqlite:///db.sqlite3
+          ALLOWED_HOSTS: localhost
         run: uv run mypy src/
 
   test:
