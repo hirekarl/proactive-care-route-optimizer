@@ -10,10 +10,17 @@ from rest_framework.views import APIView
 
 from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
+from api.route_alerts import (
+    build_at_risk_entries,
+    count_at_risk_by_borough,
+    get_stops_for_date,
+    providers_affected,
+)
 from api.serializers import (
     BuildingRiskScoreSerializer,
     BuildingUpdateSerializer,
     EnrichedOutageSerializer,
+    FrontendRouteStopSerializer,
     ProviderSerializer,
     RouteCreateSerializer,
     RouteSerializer,
@@ -253,12 +260,18 @@ class DashboardSummaryView(APIView):
             {
                 "borough": BOROUGH_BY_CODE.get(str(code), str(code)),
                 "active_outages": int(active),
-                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "at_risk_stops": 0,
                 "chronic_offenders": int(chronic),
             }
             for code, active, chronic in borough_rows
             if str(code) in BOROUGH_BY_CODE
         ]
+
+        route_date = datetime.date.today()
+        at_risk_entries = build_at_risk_entries(route_date, alert_radius_m=ALERT_RADIUS_M)
+        at_risk_by_borough = count_at_risk_by_borough(at_risk_entries)
+        for borough_row in borough_breakdown:
+            borough_row["at_risk_stops"] = at_risk_by_borough.get(borough_row["borough"], 0)
 
         outages_trend = [
             {
@@ -289,8 +302,8 @@ class DashboardSummaryView(APIView):
         return Response(
             {
                 "active_outages": active_outages,
-                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
-                "providers_affected": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "at_risk_stops": len(at_risk_entries),
+                "providers_affected": len(providers_affected(at_risk_entries)),
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
                 "heat_risk_multiplier": heat_risk_multiplier,
@@ -319,11 +332,25 @@ class RouteCreateView(APIView):
         route = Route.objects.create(name=data["name"], date=data["date"])
 
         stops: list[RouteStop] = []
-        for order, address in enumerate(data["stops"]):
+        for order, stop_data in enumerate(data["stops"]):
+            address = stop_data["address"]
             lonlat = geocode_address(address)
             lat = lonlat[1] if lonlat else None
             lon = lonlat[0] if lonlat else None
-            stops.append(RouteStop(route=route, address=address, lat=lat, lon=lon, order=order))
+            stops.append(
+                RouteStop(
+                    route=route,
+                    address=address,
+                    borough=stop_data.get("borough", ""),
+                    lat=lat,
+                    lon=lon,
+                    order=order,
+                    recipient_name=stop_data.get("recipient_name", ""),
+                    floor=stop_data.get("floor"),
+                    scheduled_time=stop_data.get("scheduled_time", ""),
+                    provider_id=stop_data.get("provider_id", ""),
+                )
+            )
         RouteStop.objects.bulk_create(stops)
 
         route_out = Route.objects.prefetch_related("stops").get(pk=route.pk)
@@ -343,6 +370,40 @@ class RouteDetailView(RetrieveAPIView[Route]):
                 alerts_by_stop_id[stop.pk] = _nearby_outages(stop.lat, stop.lon)
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
+
+
+class RouteStopsListView(APIView):
+    """GET /api/routes/stops/ — all stops for a route date (defaults to today)."""
+
+    def get(self, request: Request) -> Response:
+        date_str = request.query_params.get("date")
+        if date_str is None:
+            route_date = datetime.date.today()
+        else:
+            try:
+                route_date = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "date must be ISO 8601 (YYYY-MM-DD)."}, status=400)
+
+        stops = get_stops_for_date(route_date)
+        return Response(FrontendRouteStopSerializer(stops, many=True).data)
+
+
+class AtRiskStopsView(APIView):
+    """GET /api/alerts/at-risk/ — route stops screened against active outages."""
+
+    def get(self, request: Request) -> Response:
+        date_str = request.query_params.get("date")
+        if date_str is None:
+            route_date = datetime.date.today()
+        else:
+            try:
+                route_date = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "date must be ISO 8601 (YYYY-MM-DD)."}, status=400)
+
+        entries = build_at_risk_entries(route_date, alert_radius_m=ALERT_RADIUS_M)
+        return Response(entries)
 
 
 class BuildingListView(ListAPIView[BuildingRiskScore]):

@@ -2,7 +2,7 @@ import datetime
 
 import factory
 
-from api.models import ElevatorComplaint, Route, RouteStop
+from api.models import DFTAProvider, ElevatorComplaint, Route, RouteStop
 
 
 class ElevatorComplaintFactory(factory.django.DjangoModelFactory):
@@ -36,6 +36,23 @@ class RouteStopFactory(factory.django.DjangoModelFactory):
 
     route = factory.SubFactory(RouteFactory)
     address = "350 Fifth Avenue New York NY 10118"
+    borough = "Manhattan"
     lat = 40.7484
     lon = -73.9857
     order = factory.Sequence(lambda n: n)
+    recipient_name = factory.Sequence(lambda n: f"Recipient {n}")
+    floor = 6
+    scheduled_time = "09:20"
+    provider_id = "p1"
+
+
+class DFTAProviderFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = DFTAProvider
+
+    provider_id = factory.Sequence(lambda n: f"p{n + 1}")
+    name = factory.Sequence(lambda n: f"Provider {n + 1}")
+    borough = "Manhattan"
+    address = "1595 Lexington Ave, New York, NY 10029"
+    lat = 40.7918
+    lon = -73.9445

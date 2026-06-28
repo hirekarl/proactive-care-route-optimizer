@@ -1,3 +1,4 @@
+import datetime
 import json
 from unittest.mock import patch
 
@@ -6,7 +7,7 @@ from django.db import connection
 from django.test import Client
 
 from api.models import Route, RouteStop
-from tests.factories import ElevatorComplaintFactory
+from tests.factories import DFTAProviderFactory, ElevatorComplaintFactory, RouteFactory, RouteStopFactory
 
 GEOSEARCH_RESPONSE = {
     "features": [
@@ -119,3 +120,85 @@ def test_route_detail_no_alerts_when_no_nearby_complaints(client: Client) -> Non
     assert detail_response.status_code == 200
     stop = detail_response.json()["stops"][0]
     assert stop["outageAlerts"] == []
+
+
+@pytest.mark.django_db
+def test_create_route_accepts_rich_stop_objects(client: Client) -> None:
+    DFTAProviderFactory(provider_id="p1")
+
+    with patch("api.geocoding.httpx.get") as mock_get:
+        mock_get.return_value.raise_for_status = lambda: None
+        mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
+
+        response = client.post(
+            "/api/routes/",
+            data=json.dumps(
+                {
+                    "name": "Route D",
+                    "date": "2026-06-27",
+                    "stops": [
+                        {
+                            "address": "350 Fifth Avenue New York NY 10118",
+                            "recipientName": "E. Alvarez",
+                            "borough": "Manhattan",
+                            "floor": 6,
+                            "scheduledTime": "09:20",
+                            "providerId": "p1",
+                        }
+                    ],
+                }
+            ),
+            content_type="application/json",
+        )
+
+    assert response.status_code == 201
+    stop = RouteStop.objects.get()
+    assert stop.recipient_name == "E. Alvarez"
+    assert stop.floor == 6
+    assert stop.scheduled_time == "09:20"
+    assert stop.provider_id == "p1"
+    assert stop.borough == "Manhattan"
+
+
+@pytest.mark.django_db
+def test_list_route_stops_for_today(client: Client) -> None:
+    route = RouteFactory(date=datetime.date(2026, 6, 27))
+    RouteStopFactory(
+        route=route,
+        order=0,
+        recipient_name="E. Alvarez",
+        provider_id="p1",
+    )
+
+    response = client.get("/api/routes/stops/?date=2026-06-27")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["recipientName"] == "E. Alvarez"
+    assert data[0]["routeId"] == str(route.pk)
+    assert data[0]["sequence"] == 0
+
+
+@pytest.mark.django_db
+def test_at_risk_stops_returns_flagged_stop(client: Client) -> None:
+    provider = DFTAProviderFactory(provider_id="p1")
+    route = RouteFactory(date=datetime.date(2026, 6, 27))
+    stop = RouteStopFactory(
+        route=route,
+        lat=40.7484,
+        lon=-73.9857,
+        provider_id=provider.provider_id,
+        borough="Manhattan",
+    )
+    complaint = ElevatorComplaintFactory(lat=40.7484, lon=-73.9857)
+    _set_location(complaint.complaint_number, -73.9857, 40.7484)
+
+    response = client.get("/api/alerts/at-risk/?date=2026-06-27")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["stop"]["id"] == str(stop.pk)
+    assert data[0]["provider"]["id"] == provider.provider_id
+    assert data[0]["alert"]["stopId"] == str(stop.pk)
+    assert data[0]["alert"]["severity"] in {"critical", "warning", "watch"}
+    assert data[0]["alert"]["suggestedAction"]
