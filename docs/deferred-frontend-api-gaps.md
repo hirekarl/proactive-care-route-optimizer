@@ -97,19 +97,25 @@ current date.
 
 ---
 
-## 10. `GET /api/alerts/at-risk/` — not implemented; frontend uses mock
+## 10. `GET /api/alerts/at-risk/` — severity logic built; endpoint blocked on Gap 9
 
-**Why:** The `AtRiskStop` type joins `RouteStop`, `ProximityAlert`,
-`Outage`, and `Provider` into a single object. The `ProximityAlert`
-shape includes `severity` (`critical`/`warning`/`watch`) and
-`suggestedAction` (human-readable guidance string). Neither is computed
-server-side today.
 **Frontend impact:** `getAtRiskStops()` falls back to `mockData.ts`.
-**To close:** After Gap 9 is closed (standing daily stops exist),
-add a scheduled or on-demand proximity screening job that writes
-`ProximityAlert` rows. Derive `severity` from distance + `is_chronic` +
-`single_elevator`. Generate `suggestedAction` with a rule table keyed
-on severity + floor + elevator type.
+
+**What's done:** `api/alerts.py` implements the full severity classification
+and suggested action logic (merged to `kj/backend-sprint-1`):
+- `classify_severity(distance_m, is_chronic, is_single_elevator, is_heat_week, heat_ratio, confidence)`
+  → `critical | warning | watch`. `is_single_elevator=True` always critical;
+  `is_chronic × distance` drives the base level; heat week (≥3 forecast days
+  at 90°F) bumps one tier for buildings with `heat_ratio ≥ 1.2` and
+  `high`/`medium` confidence.
+- `suggest_action(severity, is_single_elevator, is_heat_week)` → dispatcher-readable string.
+- `get_is_heat_week()` → queries `weather_forecasts`.
+- 31 tests, 100% coverage.
+
+**To close:** After Gap 9 is closed (standing daily stops exist), add
+`GET /api/alerts/at-risk/` that screens each stop against the live outage
+feed, calls `classify_severity` and `suggest_action` per result, and
+returns the joined `AtRiskStop` shape.
 
 ---
 
