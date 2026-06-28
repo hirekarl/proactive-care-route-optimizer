@@ -3,21 +3,33 @@ name: Frontend CI
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
   pull_request:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-ci.yml"
+    branches: [main]
 
 defaults:
   run:
     working-directory: frontend
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/frontend-ci.yml"
+
   lint-format:
     name: Prettier
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +48,8 @@ jobs:
 
   typecheck:
     name: Type Check
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
