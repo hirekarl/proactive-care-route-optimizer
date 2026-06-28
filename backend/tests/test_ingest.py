@@ -85,6 +85,104 @@ def test_ingest_marks_stale_complaints_closed(monkeypatch: pytest.MonkeyPatch) -
     assert stale.status == "CLOSED"
 
 
+@pytest.mark.django_db
+def test_ingest_skips_row_missing_complaint_number(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rows with no complaint_number are silently skipped."""
+    bad_row = {"bin": "1085680", "house_number": "1595", "house_street": "LEXINGTON AVENUE"}
+
+    call_count = 0
+
+    def mock_get(url: str, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if "kqwi-7ncn" in url:
+            return _make_mock_response([bad_row] if call_count == 1 else [])
+        return _make_mock_response(DEVICE_RECORDS if call_count == 2 else [])
+
+    with patch("api.management.commands.ingest_outages.httpx.get", side_effect=mock_get):
+        with patch("api.management.commands.ingest_outages.Command._get_token", return_value=""):
+            call_command("ingest_outages")
+
+    assert ElevatorComplaint.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ingest_geocoding_fallback_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When a BIN is absent from the device registry, geocoding provides coordinates."""
+    complaint = {
+        "complaint_number": "9999002",
+        "bin": "UNKNOWN-BIN",
+        "house_number": "1595",
+        "house_street": "LEXINGTON AVENUE",
+        "zip_code": "10029",
+        "date_entered": "06/15/2026",
+        "community_board": "111",
+    }
+
+    call_count = 0
+
+    def mock_get(url: str, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if "kqwi-7ncn" in url:
+            return _make_mock_response([complaint] if call_count == 1 else [])
+        return _make_mock_response([])  # device registry returns nothing for this BIN
+
+    with patch("api.management.commands.ingest_outages.httpx.get", side_effect=mock_get):
+        with patch("api.management.commands.ingest_outages.Command._get_token", return_value=""):
+            with patch(
+                "api.management.commands.ingest_outages.geocode_address",
+                return_value=(-73.9497, 40.7960),
+            ):
+                call_command("ingest_outages")
+
+    assert ElevatorComplaint.objects.filter(complaint_number="9999002").exists()
+    c = ElevatorComplaint.objects.get(complaint_number="9999002")
+    assert abs(c.lat - 40.7960) < 0.001
+    assert abs(c.lon - (-73.9497)) < 0.001
+
+
+@pytest.mark.django_db
+def test_ingest_geocoding_fallback_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When neither the device registry nor geocoding provides coords, the row is skipped."""
+    complaint = {
+        "complaint_number": "9999003",
+        "bin": "UNKNOWN-BIN-2",
+        "house_number": "",
+        "house_street": "",
+        "zip_code": "",
+        "date_entered": "06/15/2026",
+        "community_board": "111",
+    }
+
+    call_count = 0
+
+    def mock_get(url: str, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if "kqwi-7ncn" in url:
+            return _make_mock_response([complaint] if call_count == 1 else [])
+        return _make_mock_response([])
+
+    with patch("api.management.commands.ingest_outages.httpx.get", side_effect=mock_get):
+        with patch("api.management.commands.ingest_outages.Command._get_token", return_value=""):
+            with patch(
+                "api.management.commands.ingest_outages.geocode_address",
+                return_value=None,
+            ):
+                call_command("ingest_outages")
+
+    assert not ElevatorComplaint.objects.filter(complaint_number="9999003").exists()
+
+
+def test_resolve_coords_returns_empty_for_no_bins() -> None:
+    """_resolve_coords short-circuits and returns {} when given an empty set."""
+    from api.management.commands.ingest_outages import Command
+
+    result = Command()._resolve_coords(set(), {})
+    assert result == {}
+
+
 def test_ingest_date_parsing() -> None:
     from api.management.commands.ingest_outages import _parse_dob_date
 
