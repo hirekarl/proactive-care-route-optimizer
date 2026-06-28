@@ -3,21 +3,33 @@ name: Backend CI
 on:
   push:
     branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
   pull_request:
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-ci.yml"
+    branches: [main]
 
 defaults:
   run:
     working-directory: backend
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/backend-ci.yml"
+
   lint:
     name: Lint & Format
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +53,8 @@ jobs:
 
   typecheck:
     name: Type Check
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +75,8 @@ jobs:
 
   test:
     name: Tests
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
 
     services:
