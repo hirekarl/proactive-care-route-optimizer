@@ -27,7 +27,7 @@ class Command(BaseCommand):
                 "longitude": NYC_LON,
                 "start_date": ANALYSIS_START,
                 "end_date": end_date,
-                "daily": "temperature_2m_max,precipitation_sum",
+                "daily": "temperature_2m_max",
                 # timezone is required — without it dates are UTC and misalign with complaint dates
                 "timezone": "America/New_York",
                 # temperature_unit is required — default is Celsius; threshold is 90 °F
@@ -40,15 +40,13 @@ class Command(BaseCommand):
 
         dates = raw["daily"]["time"]
         temps = raw["daily"]["temperature_2m_max"]
-        precips = raw["daily"]["precipitation_sum"]
 
         rows = [
             WeatherDay(
                 date=d,
                 temp_max_f=t if t is not None else 0.0,
-                precip_mm=p,
             )
-            for d, t, p in zip(dates, temps, precips, strict=True)
+            for d, t in zip(dates, temps, strict=True)
         ]
 
         with transaction.atomic():

@@ -55,8 +55,8 @@ def _insert_provider(provider_id: str, lat: float, lon: float) -> None:
 def _insert_center(center_id: str, lat: float, lon: float) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "INSERT INTO dfta_senior_centers (center_id, name, community_board, lat, lon)"
-            " VALUES (%s, 'C', '101', %s, %s) ON CONFLICT (center_id) DO NOTHING",
+            "INSERT INTO dfta_senior_centers (center_id, name, lat, lon)"
+            " VALUES (%s, 'C', %s, %s) ON CONFLICT (center_id) DO NOTHING",
             [center_id, lat, lon],
         )
         cursor.execute(
@@ -70,7 +70,7 @@ def _insert_center(center_id: str, lat: float, lon: float) -> None:
 def _insert_weather(days: list[tuple[str, float]]) -> None:
     with connection.cursor() as cursor:
         cursor.executemany(
-            "INSERT INTO weather_days (date, temp_max_f, precip_mm) VALUES (%s, %s, 0)"
+            "INSERT INTO weather_days (date, temp_max_f) VALUES (%s, %s)"
             " ON CONFLICT (date) DO NOTHING",
             days,
         )
@@ -402,7 +402,6 @@ class TestIngestDFTA:
 
         assert DFTASeniorCenter.objects.filter(center_id="SC-INGEST-1").exists()
         sc = DFTASeniorCenter.objects.get(center_id="SC-INGEST-1")
-        assert sc.community_board == "101"
         assert sc.lat == pytest.approx(40.758)
 
 

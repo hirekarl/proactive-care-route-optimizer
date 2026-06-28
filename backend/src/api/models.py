@@ -21,7 +21,6 @@ class ElevatorComplaint(models.Model):
 class Route(models.Model):
     name = models.TextField()
     date = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "routes"
@@ -44,7 +43,6 @@ class WeatherDay(models.Model):
 
     date = models.DateField(primary_key=True)
     temp_max_f = models.FloatField()
-    precip_mm = models.FloatField(null=True)
 
     class Meta:
         db_table = "weather_days"
@@ -55,7 +53,6 @@ class WeatherForecast(models.Model):
 
     date = models.DateField(primary_key=True)
     temp_max_f = models.FloatField()
-    fetched_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "weather_forecasts"
@@ -80,7 +77,6 @@ class DFTASeniorCenter(models.Model):
 
     center_id = models.TextField(primary_key=True)
     name = models.TextField(blank=True)
-    community_board = models.TextField(blank=True)
     lat = models.FloatField()
     lon = models.FloatField()
 
@@ -121,8 +117,6 @@ class BuildingRiskScore(models.Model):
     # Operator-supplied elevator count — overrides is_single_elevator when set.
     # 1 → treated as single elevator; >1 → not single elevator; None → no override.
     elevator_count_override = models.IntegerField(null=True)
-
-    scored_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "building_risk_scores"

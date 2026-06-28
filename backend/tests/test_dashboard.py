@@ -50,7 +50,7 @@ def _seed_building(
 def _seed_forecast(days: list[tuple[str, float]]) -> None:
     with connection.cursor() as cursor:
         cursor.executemany(
-            "INSERT INTO weather_forecasts (date, temp_max_f, fetched_at) VALUES (%s, %s, NOW())",
+            "INSERT INTO weather_forecasts (date, temp_max_f) VALUES (%s, %s)",
             days,
         )
 

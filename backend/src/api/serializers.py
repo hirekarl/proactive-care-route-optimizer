@@ -59,7 +59,7 @@ class RouteSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
 
     class Meta:
         model = Route
-        fields = ["id", "name", "date", "created_at", "stops"]
+        fields = ["id", "name", "date", "stops"]
 
 
 class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
@@ -96,7 +96,6 @@ class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[
             "confidence",
             "is_single_elevator",
             "elevator_count_override",
-            "scored_at",
         ]
 
 

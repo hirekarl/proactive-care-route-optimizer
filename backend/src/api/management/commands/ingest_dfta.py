@@ -61,13 +61,10 @@ class Command(BaseCommand):
             if lonlat is None:
                 continue
             lon, lat = lonlat
-            # Note: source data has typo 'comminuty_board' (missing second 'n')
-            cb = row.get("comminuty_board") or row.get("community_board", "")
             centers.append(
                 DFTASeniorCenter(
                     center_id=str(center_id),
                     name=row.get("name", ""),
-                    community_board=str(cb),
                     lat=lat,
                     lon=lon,
                 )
