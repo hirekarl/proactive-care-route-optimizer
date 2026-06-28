@@ -114,6 +114,8 @@ uv run python manage.py ingest_elevator_devices # DOB device details → buildin
 uv run python manage.py purge_old_routes        # delete routes + stops older than --days (default 90)
 ```
 
+`purge_old_routes` deletes `Route` rows (and their `RouteStop` children via cascade) with `date` strictly before the cutoff. Default retention is 90 days; the boundary date itself is kept. Run on a schedule to limit care-recipient address retention.
+
 `ingest_dfta` skips provider ingestion unless `DFTA_PROVIDER_DATASET_ID` is set in `.env`.
 
 `ingest_forecast` should be run daily (replaces all rows each run). `weather_forecasts` is consumed by `GET /api/dashboard/summary/` to populate `heatForecast`. If the table is empty, the dashboard returns `heatForecast.forecast = []` with `daysAbove90 = 0`.

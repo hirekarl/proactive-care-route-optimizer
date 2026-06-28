@@ -71,9 +71,10 @@ flowchart TD
 
 ### Data flow
 
-1. **Ingestion** — Four management commands populate the database (run in order):
+1. **Ingestion** — Five management commands populate the database (run in order):
    - `ingest_outages` — polls the NYC Open Data elevator-complaint API and upserts `elevator_complaints`
    - `ingest_weather` — fetches daily temperature maxima from Open-Meteo archive (2018–today) into `weather_days`
+   - `ingest_forecast` — fetches the 7-day temperature forecast from Open-Meteo into `weather_forecasts`; should run daily
    - `ingest_dfta` — fetches DFTA senior center (and optional provider) locations from NYC Open Data
    - `ingest_elevator_devices` — two-step join through `e5aq-a4j2` and `juyv-2jek` to populate `building_risk_scores.is_single_elevator`; must run after `compute_risk_scores`
 
@@ -340,6 +341,7 @@ The framework, library choices, and toolchain are Mitra's to evolve — these co
 | NYC Open Data | DFTA Senior Centers | `ygfr-ij6t` | Senior center locations for vulnerability proximity scoring |
 | NYC Planning | GeoSearch API | — | Fallback geocoding when a BIN has no device record |
 | Open-Meteo | Historical Archive | — | Daily temperature maxima for heat correlation; 2018–present |
+| Open-Meteo | Forecast API | — | 7-day temperature forecast; populates `weather_forecasts` for heat-advisory detection |
 
 **Important:** `kqwi-7ncn` is not a real-time outage feed — it reflects complaints filed by residents/managers, typically hours to days after an actual stoppage. Alert copy should say "reported outage" or "active complaint," not "confirmed outage." See [`docs/nyc-open-data.md`](./docs/nyc-open-data.md) for the full integration guide, including the critical date-format gotcha, the ingest polling pattern, and the PostGIS schema.
 
