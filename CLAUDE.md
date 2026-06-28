@@ -111,6 +111,7 @@ uv run python manage.py ingest_forecast         # Open-Meteo 7-day forecast → 
 uv run python manage.py ingest_dfta             # DFTA senior centers → dfta_senior_centers
 uv run python manage.py compute_risk_scores     # chronic offenders + scores → building_risk_scores
 uv run python manage.py ingest_elevator_devices # DOB device details → building_risk_scores.is_single_elevator
+uv run python manage.py purge_old_routes        # delete routes + stops older than --days (default 90)
 ```
 
 `ingest_dfta` skips provider ingestion unless `DFTA_PROVIDER_DATASET_ID` is set in `.env`.

@@ -404,6 +404,139 @@ class TestIngestDFTA:
         sc = DFTASeniorCenter.objects.get(center_id="SC-INGEST-1")
         assert sc.lat == pytest.approx(40.758)
 
+    def _call_with_providers(
+        self, provider_rows: list[dict[str, str]], dataset_id: str = "cwsm-2ns3"
+    ) -> None:
+        from django.core.management import call_command
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = provider_rows if dataset_id in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            call_command("ingest_dfta", provider_dataset=dataset_id, verbosity=0)
+
+    def test_ingest_providers_happy_path(self) -> None:
+        """Provider with contractid, lat/lon, name, borough, address is stored correctly."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "contractid": "P-001",
+                    "provider_name": "Meals on Wheels Bronx",
+                    "borough": "Bronx",
+                    "address": "1 Grand Concourse",
+                    "latitude": "40.858",
+                    "longitude": "-73.925",
+                }
+            ]
+        )
+
+        assert DFTAProvider.objects.filter(provider_id="P-001").exists()
+        p = DFTAProvider.objects.get(provider_id="P-001")
+        assert p.name == "Meals on Wheels Bronx"
+        assert p.borough == "Bronx"
+        assert p.address == "1 Grand Concourse"
+        assert p.lat == pytest.approx(40.858)
+        assert p.lon == pytest.approx(-73.925)
+
+    def test_ingest_providers_address_from_parts(self) -> None:
+        """When no address field, constructs address from house_number + street_name."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "contractid": "P-002",
+                    "house_number": "215",
+                    "street_name": "East 68th Street",
+                    "latitude": "40.768",
+                    "longitude": "-73.961",
+                }
+            ]
+        )
+
+        p = DFTAProvider.objects.get(provider_id="P-002")
+        assert p.address == "215 East 68th Street"
+
+    def test_ingest_providers_name_fallback(self) -> None:
+        """Uses name field when provider_name is absent."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "contractid": "P-003",
+                    "name": "Senior Care Queens",
+                    "latitude": "40.730",
+                    "longitude": "-73.794",
+                }
+            ]
+        )
+
+        p = DFTAProvider.objects.get(provider_id="P-003")
+        assert p.name == "Senior Care Queens"
+
+    def test_ingest_providers_alternative_id_fields(self) -> None:
+        """Falls back through provider_id → facilityid → objectid when contractid absent."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {"provider_id": "P-ALT-1", "latitude": "40.700", "longitude": "-74.000"},
+                {"facilityid": "P-ALT-2", "latitude": "40.701", "longitude": "-74.001"},
+                {"objectid": "P-ALT-3", "latitude": "40.702", "longitude": "-74.002"},
+            ]
+        )
+
+        assert DFTAProvider.objects.filter(provider_id="P-ALT-1").exists()
+        assert DFTAProvider.objects.filter(provider_id="P-ALT-2").exists()
+        assert DFTAProvider.objects.filter(provider_id="P-ALT-3").exists()
+
+    def test_ingest_providers_skips_row_with_no_id(self) -> None:
+        """Rows with no recognisable ID field are skipped without error."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {"name": "No ID Provider", "latitude": "40.700", "longitude": "-74.000"},
+            ]
+        )
+
+        assert DFTAProvider.objects.count() == 0
+
+    def test_ingest_providers_replaces_on_rerun(self) -> None:
+        """A second run replaces all provider rows — no duplicates."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "contractid": "P-OLD",
+                    "latitude": "40.700",
+                    "longitude": "-74.000",
+                }
+            ]
+        )
+        assert DFTAProvider.objects.count() == 1
+
+        self._call_with_providers(
+            [
+                {
+                    "contractid": "P-NEW",
+                    "latitude": "40.701",
+                    "longitude": "-74.001",
+                }
+            ]
+        )
+
+        assert DFTAProvider.objects.count() == 1
+        assert DFTAProvider.objects.filter(provider_id="P-NEW").exists()
+        assert not DFTAProvider.objects.filter(provider_id="P-OLD").exists()
+
 
 @pytest.mark.django_db
 class TestBuildingOverride:
