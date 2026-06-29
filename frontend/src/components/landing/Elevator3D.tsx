@@ -1,14 +1,24 @@
 import { useFrame } from "@react-three/fiber";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import type { Group, MeshStandardMaterial } from "three";
 
+import { elevatorRef } from "./elevatorRef";
+
 export function Elevator3D() {
+  const rootRef = useRef<Group>(null);
   const cabinRef = useRef<Group>(null);
   const doorLeftRef = useRef<Group>(null);
   const doorRightRef = useRef<Group>(null);
   const glowMatRef = useRef<MeshStandardMaterial>(null);
+
+  useEffect(() => {
+    elevatorRef.current = rootRef.current;
+    return () => {
+      elevatorRef.current = null;
+    };
+  }, []);
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -24,7 +34,7 @@ export function Elevator3D() {
   });
 
   return (
-    <group>
+    <group ref={rootRef}>
       <ElevatorShaft />
       <group ref={cabinRef}>
         <ElevatorCabin />

@@ -19,9 +19,18 @@ export function FactCardsOverlay() {
           el.style.pointerEvents = "none";
           return;
         }
-        el.style.transform = `translate3d(${proj.x.toFixed(1)}px, ${proj.y.toFixed(1)}px, 0) translate(-50%, -50%) scale(${proj.scale.toFixed(3)})`;
+        el.style.transform =
+          `translate3d(${proj.x.toFixed(1)}px, ${proj.y.toFixed(1)}px, 0) ` +
+          `translate(-50%, -50%) ` +
+          `rotateY(${proj.tiltDeg.toFixed(1)}deg) ` +
+          `scale(${proj.scale.toFixed(3)})`;
         el.style.opacity = proj.opacity.toFixed(3);
         el.style.zIndex = String(proj.zIndex);
+        const glow = (proj.featured * 32).toFixed(0);
+        el.style.boxShadow =
+          `0 24px 60px -20px rgba(2, 6, 23, 0.7), ` +
+          `0 0 0 1px rgba(255, 255, 255, 0.04) inset, ` +
+          `0 0 ${glow}px -8px var(--accent)`;
       });
       raf = requestAnimationFrame(tick);
     };
