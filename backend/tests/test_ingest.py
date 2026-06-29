@@ -316,6 +316,33 @@ class TestIngestForecast:
         assert params["forecast_days"] == 7
 
 
+@pytest.mark.django_db
+class TestIngestWeather:
+    """Tests for the ingest_weather management command."""
+
+    def _mock_response(self, dates: list[str], temps: list[float | None]) -> MagicMock:
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = {"daily": {"time": dates, "temperature_2m_max": temps}}
+        return m
+
+    def test_null_temp_excluded(self) -> None:
+        """A null temperature in the API response is excluded, not stored as 0.0."""
+        from api.models import WeatherDay
+
+        dates = ["2026-06-27", "2026-06-28", "2026-06-29"]
+        temps: list[float | None] = [94.0, None, 88.5]
+        with patch(
+            "api.management.commands.ingest_weather.httpx.get",
+            return_value=self._mock_response(dates, temps),
+        ):
+            call_command("ingest_weather", verbosity=0)
+
+        assert WeatherDay.objects.count() == 2
+        assert not WeatherDay.objects.filter(date="2026-06-28").exists()
+        assert WeatherDay.objects.get(date="2026-06-27").temp_max_f == 94.0
+
+
 class TestGeocode:
     """Unit tests for geocode_address utility."""
 

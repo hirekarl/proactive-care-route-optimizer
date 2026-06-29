@@ -45,6 +45,25 @@ class Command(BaseCommand):
                 "complaint_number", flat=True
             )
         )
+        # Geocode outside the transaction — Nominatim calls can take seconds each, and holding
+        # an open transaction for HTTP round-trips risks idle-in-transaction timeouts on Neon.
+        seen_bins: set[str] = set()
+        for row in rows:
+            bin_val = row.get("bin", "")
+            if not bin_val or bin_val in coords or bin_val in seen_bins:
+                continue
+            seen_bins.add(bin_val)
+            address_parts = [
+                row.get("house_number", ""),
+                row.get("house_street", ""),
+                "New York NY",
+                row.get("zip_code", ""),
+            ]
+            address = " ".join(p for p in address_parts if p)
+            lonlat = geocode_address(address)
+            if lonlat is not None:
+                coords[bin_val] = lonlat
+
         incoming_numbers = set()
 
         with transaction.atomic():
@@ -56,16 +75,7 @@ class Command(BaseCommand):
 
                 lonlat = coords.get(bin_val)
                 if lonlat is None:
-                    address_parts = [
-                        row.get("house_number", ""),
-                        row.get("house_street", ""),
-                        "New York NY",
-                        row.get("zip_code", ""),
-                    ]
-                    address = " ".join(p for p in address_parts if p)
-                    lonlat = geocode_address(address)
-                    if lonlat is None:
-                        continue
+                    continue
 
                 lon, lat = lonlat
                 incoming_numbers.add(complaint_number)
