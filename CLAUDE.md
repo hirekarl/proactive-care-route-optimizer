@@ -144,7 +144,7 @@ The `compute_risk_scores` command scores every building with any elevator compla
 |---|---|---|
 | GET | `/api/health/` | Health check |
 | GET | `/api/outages/?lat=&lon=` | Active complaints within 0.5 mi of a point |
-| GET | `/api/dashboard/summary/` | Aggregate stats + heat forecast for the dispatcher dashboard |
+| GET | `/api/dashboard/summary/` | Aggregate stats + heat forecast for the dispatcher dashboard. `atRiskStopsError: true` when the proximity scan fails (soft-degrades; `atRiskStops` returns `0`). |
 | GET | `/api/providers/` | DFTA provider locations |
 | POST | `/api/routes/` | Create a route with geocoded stops |
 | GET | `/api/routes/<id>/` | Route with per-stop outage alerts |

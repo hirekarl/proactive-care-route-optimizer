@@ -1,9 +1,10 @@
 """Tests for GET /api/dashboard/summary/."""
 
 import datetime
+from unittest.mock import patch
 
 import pytest
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.test import Client
 
 from tests.factories import BuildingRiskScoreFactory, ElevatorComplaintFactory
@@ -206,3 +207,11 @@ class TestDashboardSummaryView:
         )
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["atRiskStops"] == 0
+
+    def test_at_risk_stops_error_field_on_db_failure(self) -> None:
+        with patch("api.views._batch_nearby_outages", side_effect=DatabaseError("forced")):
+            resp = Client().get("/api/dashboard/summary/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["atRiskStops"] == 0
+        assert data["atRiskStopsError"] is True
