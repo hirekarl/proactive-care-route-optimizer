@@ -359,7 +359,7 @@ class DashboardSummaryView(APIView):
 
         try:
             today_stops = list(RouteStop.objects.filter(route__date=timezone.localdate()))
-            # Single batched PostGIS scan; cost grows with stop × active complaint count.
+            # cost scales with stops × nearby active complaints (GiST-indexed)
             at_risk_stops = len(_batch_nearby_outages(today_stops))
             at_risk_stops_error = False
         except DatabaseError:
