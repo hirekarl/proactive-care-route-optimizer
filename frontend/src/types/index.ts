@@ -59,6 +59,19 @@ export interface BoroughRisk {
   chronicOffenders: number;
 }
 
+export interface ForecastDay {
+  date: string;
+  tempMaxF: number;
+  isHeatDay: boolean;
+}
+
+export interface HeatForecast {
+  isHeatWeek: boolean;
+  daysAbove90: number;
+  peakTempF: number | null;
+  forecast: ForecastDay[];
+}
+
 export interface DashboardSummary {
   activeOutages: number;
   atRiskStops: number;
@@ -69,6 +82,7 @@ export interface DashboardSummary {
   lastIngestAt: string;
   boroughBreakdown: BoroughRisk[];
   outagesTrend: { date: string; outages: number }[];
+  heatForecast: HeatForecast;
 }
 
 export interface AtRiskStop {

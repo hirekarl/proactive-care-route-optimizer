@@ -1,6 +1,7 @@
 import { api } from "../api/client";
 import { AtRiskStopsTable } from "../components/dashboard/AtRiskStopsTable";
 import { BoroughRiskChart } from "../components/dashboard/BoroughRiskChart";
+import { HeatAdvisoryBanner } from "../components/dashboard/HeatAdvisoryBanner";
 import { OutagesTrendChart } from "../components/dashboard/OutagesTrendChart";
 import { Header } from "../components/layout/Header";
 import { Card } from "../components/ui/Card";
@@ -25,6 +26,9 @@ export function DashboardPage() {
         ) : (
           summary.data && (
             <>
+              {summary.data.heatForecast && (
+                <HeatAdvisoryBanner forecast={summary.data.heatForecast} />
+              )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard
                   label="Active outages"

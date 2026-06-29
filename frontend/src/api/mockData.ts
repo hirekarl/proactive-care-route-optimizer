@@ -299,6 +299,20 @@ export const dashboardSummary: DashboardSummary = {
     { date: "Jun 26", outages: 31 },
     { date: "Jun 27", outages: 27 },
   ],
+  heatForecast: {
+    isHeatWeek: true,
+    daysAbove90: 4,
+    peakTempF: 96.2,
+    forecast: [
+      { date: "2026-06-27", tempMaxF: 94.3, isHeatDay: true },
+      { date: "2026-06-28", tempMaxF: 96.2, isHeatDay: true },
+      { date: "2026-06-29", tempMaxF: 88.1, isHeatDay: false },
+      { date: "2026-06-30", tempMaxF: 91.4, isHeatDay: true },
+      { date: "2026-07-01", tempMaxF: 92.7, isHeatDay: true },
+      { date: "2026-07-02", tempMaxF: 87.9, isHeatDay: false },
+      { date: "2026-07-03", tempMaxF: 84.5, isHeatDay: false },
+    ],
+  },
 };
 
 export function buildAtRiskStops(): AtRiskStop[] {
