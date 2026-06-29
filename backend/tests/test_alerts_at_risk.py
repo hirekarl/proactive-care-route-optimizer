@@ -2,23 +2,14 @@ import datetime
 from typing import Any
 
 import pytest
-from django.db import connection
 from django.test import Client
 
 from api.models import BuildingRiskScore, Route, RouteStop
 from tests.factories import ElevatorComplaintFactory
+from tests.helpers import _set_location
 
 TEST_API_KEY = "dispatcher-test-key"
 AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {TEST_API_KEY}"}
-
-
-def _set_location(complaint_number: str, lon: float, lat: float) -> None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-            " WHERE complaint_number = %s",
-            [lon, lat, complaint_number],
-        )
 
 
 def _seed_building(

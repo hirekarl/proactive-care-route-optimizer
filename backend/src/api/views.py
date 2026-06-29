@@ -1,8 +1,11 @@
 import datetime
+import logging
 from typing import Any
 
-from django.db import connection
+from django.conf import settings
+from django.db import DatabaseError, connection
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -23,6 +26,8 @@ from api.serializers import (
     RouteStopFlatSerializer,
 )
 from api.utils import OUTAGE_RADIUS_M as ALERT_RADIUS_M
+
+logger = logging.getLogger(__name__)
 
 BOROUGH_BY_CODE = {
     "1": "Manhattan",
@@ -180,38 +185,6 @@ def _batch_nearby_outages(stops: list[RouteStop]) -> dict[int, list[dict[str, An
     return result
 
 
-COUNT_AT_RISK_SQL = """
-    WITH stop_points AS (
-        SELECT UNNEST(%s::int[]) AS stop_id,
-               UNNEST(%s::float8[]) AS slon,
-               UNNEST(%s::float8[]) AS slat
-    )
-    SELECT COUNT(DISTINCT sp.stop_id)
-    FROM stop_points sp
-    JOIN elevator_complaints ec ON (
-        ec.status = 'ACTIVE' AND ec.location IS NOT NULL
-        AND ST_DWithin(ec.location::geography,
-                       ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography,
-                       %s)
-    )
-"""
-
-
-def _count_at_risk_stops(stops: list[RouteStop]) -> int:
-    stop_ids: list[int] = []
-    lons: list[float] = []
-    lats: list[float] = []
-    for s in stops:
-        if s.lat is not None and s.lon is not None:
-            stop_ids.append(s.pk)
-            lons.append(s.lon)
-            lats.append(s.lat)
-    if not stop_ids:
-        return 0
-    rows = _run_query(COUNT_AT_RISK_SQL, [stop_ids, lons, lats, ALERT_RADIUS_M])
-    return int(rows[0]["count"]) if rows else 0
-
-
 def _enrich_alerts_in_place(
     alerts_by_stop_id: dict[int, list[dict[str, Any]]], is_heat_week: bool
 ) -> None:
@@ -241,7 +214,7 @@ def _parse_date_param(request: Request) -> datetime.date | Response:
             return datetime.date.fromisoformat(date_str)
         except ValueError:
             return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
-    return datetime.date.today()
+    return timezone.localdate()
 
 
 class HealthCheckView(APIView):
@@ -386,9 +359,12 @@ class DashboardSummaryView(APIView):
         }
 
         try:
-            today_stops = list(RouteStop.objects.filter(route__date=datetime.date.today()))
-            at_risk_stops = _count_at_risk_stops(today_stops)
-        except Exception:
+            today_stops = list(RouteStop.objects.filter(route__date=timezone.localdate()))
+            at_risk_stops = len(_batch_nearby_outages(today_stops))
+        except DatabaseError:
+            logger.exception("at_risk_stops proximity scan failed")
+            if settings.DEBUG:
+                raise
             at_risk_stops = 0
 
         return Response(

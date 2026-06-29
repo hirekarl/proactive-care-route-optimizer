@@ -7,6 +7,7 @@ from django.db import connection
 from django.test import Client
 
 from tests.factories import ElevatorComplaintFactory
+from tests.helpers import _set_location
 
 
 def _seed_building(
@@ -52,15 +53,6 @@ def _seed_forecast(days: list[tuple[str, float]]) -> None:
         cursor.executemany(
             "INSERT INTO weather_forecasts (date, temp_max_f) VALUES (%s, %s)",
             days,
-        )
-
-
-def _set_location(complaint_number: str, lon: float, lat: float) -> None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-            " WHERE complaint_number = %s",
-            [lon, lat, complaint_number],
         )
 
 
