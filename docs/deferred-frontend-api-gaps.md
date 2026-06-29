@@ -23,17 +23,12 @@ unknown buildings default to `false` (no false-positive risk flags).
 
 ---
 
-## 3. `DashboardSummary.atRiskStops` — always `0`
+## 3. `DashboardSummary.atRiskStops` — ~~always `0`~~ **CLOSED**
 
-**Stubbed in:** `api/views.py` (`DashboardSummaryView`)
-**Why:** Computing "at-risk stops" requires a persistent set of route
-stops with geocoded coordinates that can be screened against the live
-outage feed at dashboard load time. Our current `RouteStop` model only
-holds stops from explicitly-submitted routes (via `POST /api/routes/`);
-there is no standing daily route imported from the DFTA system.
-**To close:** Either (a) agree on a daily route-import mechanism with
-DFTA data and store those stops, or (b) make the frontend submit the
-day's routes on startup and cache the count server-side.
+**Closed by:** `DashboardSummaryView` now queries today's `RouteStop`
+rows via `_batch_nearby_outages()` and returns the count of stops with
+≥1 active nearby outage. Will be 0 when no routes have been submitted
+for today, which is expected until a daily route-import flow exists.
 
 ---
 
@@ -80,42 +75,31 @@ any source; if not, consider removing it from the `Provider` type.
 
 ---
 
-## 9. `GET /api/routes/stops/` — not implemented; frontend uses mock
+## 9. `GET /api/routes/stops/` — ~~not implemented~~ **CLOSED**
 
-**Why:** Mitra's `RouteStop` type includes `recipientName`, `floor`,
-`scheduledTime`, and `providerId` — fields that imply a care-recipient
-management system we have not built. Our `RouteStop` model only holds
+**Closed by:** `RouteStopsView` + `RouteStopFlatSerializer` (Issues #5).
+Returns all stops for a given date's routes (defaults to today).
+Requires `Authorization: Api-Key` header. Optional `?date=YYYY-MM-DD`
+param. Response shape: `id`, `routeId`, `routeName`, `routeDate`,
 `address`, `lat`, `lon`, `order`.
-**Frontend impact:** `getStops()` falls back to `mockData.ts`; the Map
-page and At-Risk Stops table are unaffected as long as `VITE_USE_MOCK`
-is not `"false"` for those calls.
-**To close:** Extend `RouteStop` model with `recipient_name`,
-`floor_number`, `scheduled_time` fields and either (a) accept them on
-`POST /api/routes/` or (b) build a separate recipient-import flow. Add
-`GET /api/routes/stops/` that returns all stops across all routes for the
-current date.
+
+**Note:** Fields `recipientName`, `floor`, `scheduledTime`, `providerId`
+from Mitra's `RouteStop` type are not in the model and remain absent.
+The frontend's `getStops()` will receive real data but without those
+fields until a care-recipient import flow is built.
 
 ---
 
-## 10. `GET /api/alerts/at-risk/` — severity logic built; endpoint blocked on Gap 9
+## 10. `GET /api/alerts/at-risk/` — ~~blocked on Gap 9~~ **CLOSED**
 
-**Frontend impact:** `getAtRiskStops()` falls back to `mockData.ts`.
+**Closed by:** `AlertsAtRiskView` + `AtRiskStopSerializer` (Issue #6).
+Returns only stops with ≥1 active nearby outage. Requires API key.
+Optional `?date=YYYY-MM-DD` param (defaults to today).
+Response shape per stop: `id`, `routeId`, `routeName`, `routeDate`,
+`address`, `lat`, `lon`, `order`, `outageAlerts` (list), `highestSeverity`.
 
-**What's done:** `api/alerts.py` implements the full severity classification
-and suggested action logic (merged to `kj/backend-sprint-1`):
-- `classify_severity(distance_m, is_chronic, is_single_elevator, is_heat_week, heat_ratio, confidence)`
-  → `critical | warning | watch`. `is_single_elevator=True` always critical;
-  `is_chronic × distance` drives the base level; heat week (≥3 forecast days
-  at 90°F) bumps one tier for buildings with `heat_ratio ≥ 1.2` and
-  `high`/`medium` confidence.
-- `suggest_action(severity, is_single_elevator, is_heat_week)` → dispatcher-readable string.
-- `get_is_heat_week()` → queries `weather_forecasts`.
-- 31 tests, 100% coverage.
-
-**To close:** After Gap 9 is closed (standing daily stops exist), add
-`GET /api/alerts/at-risk/` that screens each stop against the live outage
-feed, calls `classify_severity` and `suggest_action` per result, and
-returns the joined `AtRiskStop` shape.
+`DashboardSummary.atRiskStops` is now computed from today's stops via
+`_batch_nearby_outages()` — no longer hardcoded to 0.
 
 ---
 

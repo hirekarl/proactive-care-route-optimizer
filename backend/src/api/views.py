@@ -13,12 +13,14 @@ from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 from api.permissions import HasRouteApiKey
 from api.serializers import (
+    AtRiskStopSerializer,
     BuildingRiskScoreSerializer,
     BuildingUpdateSerializer,
     EnrichedOutageSerializer,
     ProviderSerializer,
     RouteCreateSerializer,
     RouteSerializer,
+    RouteStopFlatSerializer,
 )
 from api.utils import OUTAGE_RADIUS_M as ALERT_RADIUS_M
 
@@ -354,11 +356,15 @@ class DashboardSummaryView(APIView):
             "forecast": forecast_days,
         }
 
+        today_stops = list(RouteStop.objects.filter(route__date=datetime.date.today()))
+        at_risk_stop_ids = _batch_nearby_outages(today_stops)
+        at_risk_stops = len(at_risk_stop_ids)
+
         return Response(
             {
                 "active_outages": active_outages,
-                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
-                "providers_affected": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "at_risk_stops": at_risk_stops,
+                "providers_affected": 0,  # stub — no provider–stop link in current data
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
                 "heat_risk_multiplier": heat_risk_multiplier,
@@ -428,6 +434,103 @@ class RouteDetailView(RetrieveAPIView[Route]):
                 )
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
+
+
+class RouteStopsView(APIView):
+    """
+    GET /api/routes/stops/?date=YYYY-MM-DD — all stops for a given date's routes.
+    Defaults to today when ?date is omitted.
+    """
+
+    permission_classes = [HasRouteApiKey]
+
+    def get(self, request: Request) -> Response:
+        date_str = request.query_params.get("date")
+        if date_str:
+            try:
+                target_date = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
+        else:
+            target_date = datetime.date.today()
+
+        stops = (
+            RouteStop.objects.select_related("route")
+            .filter(route__date=target_date)
+            .order_by("route__id", "order")
+        )
+        return Response(RouteStopFlatSerializer(stops, many=True).data)
+
+
+_SEVERITY_ORDER: dict[str, int] = {"critical": 0, "warning": 1, "watch": 2}
+
+
+class AlertsAtRiskView(APIView):
+    """
+    GET /api/alerts/at-risk/?date=YYYY-MM-DD — stops with active proximity alerts.
+    Returns only stops that have at least one nearby active outage.
+    Defaults to today when ?date is omitted.
+    """
+
+    permission_classes = [HasRouteApiKey]
+
+    def get(self, request: Request) -> Response:
+        date_str = request.query_params.get("date")
+        if date_str:
+            try:
+                target_date = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
+        else:
+            target_date = datetime.date.today()
+
+        stops = list(
+            RouteStop.objects.select_related("route")
+            .filter(route__date=target_date)
+            .order_by("route__id", "order")
+        )
+        is_heat_week = get_is_heat_week()
+        alerts_by_stop_id = _batch_nearby_outages(stops)
+
+        for raw_alerts in alerts_by_stop_id.values():
+            for alert in raw_alerts:
+                severity = classify_severity(
+                    distance_m=float(alert["distance_m"]),
+                    is_chronic=bool(alert.get("is_chronic", False)),
+                    is_single_elevator=alert.get("is_single_elevator"),
+                    is_heat_week=is_heat_week,
+                    heat_ratio=alert.get("heat_ratio"),
+                    confidence=str(alert.get("confidence") or "low"),
+                )
+                alert["severity"] = severity
+                alert["suggested_action"] = suggest_action(
+                    severity=severity,
+                    is_single_elevator=alert.get("is_single_elevator"),
+                    is_heat_week=is_heat_week,
+                )
+
+        results = []
+        for stop in stops:
+            alerts = alerts_by_stop_id.get(stop.pk)
+            if not alerts:
+                continue
+            highest = min(alerts, key=lambda a: _SEVERITY_ORDER.get(a["severity"], 3))["severity"]
+            results.append(
+                {
+                    "id": stop.pk,
+                    "route_id": stop.route_id,
+                    "route_name": stop.route.name,
+                    "route_date": stop.route.date,
+                    "address": stop.address,
+                    "lat": stop.lat,
+                    "lon": stop.lon,
+                    "order": stop.order,
+                    "outage_alerts": alerts,
+                    "highest_severity": highest,
+                }
+            )
+
+        return Response(AtRiskStopSerializer(results, many=True).data)
 
 
 class BuildingListView(ListAPIView[BuildingRiskScore]):
