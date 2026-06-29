@@ -10,12 +10,18 @@ dependencies = [
     "python-decouple>=3.8",
     "psycopg[binary]>=3.2",
     "gunicorn>=23",
+    "httpx>=0.28",
+    "pandas>=2.2",
+    "scipy>=1.13",
+    "shapely>=2.0",
+    "djangorestframework-camel-case>=1.4",
 ]
 
 [dependency-groups]
 dev = [
     "django-stubs[compatible-mypy]>=5.2",
     "djangorestframework-stubs[compatible-mypy]>=3.15",
+    "pandas-stubs>=2.2",
     "ruff>=0.11",
     "pytest>=8.3",
     "pytest-django>=4.9",
@@ -54,6 +60,14 @@ exclude = ["tests/"]
 
 [[tool.mypy.overrides]]
 module = "decouple"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "djangorestframework_camel_case.*"
 ignore_missing_imports = true
 
 [tool.django-stubs]

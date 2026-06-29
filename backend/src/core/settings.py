@@ -1,7 +1,7 @@
 """Django settings for the Proactive Care-Route Optimizer API."""
 
-import re
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from decouple import Csv, config
 
@@ -13,26 +13,28 @@ def _parse_db_url(url: str) -> dict[str, object]:
     if url.startswith("sqlite"):
         db_path = url.split("///", 1)[-1]
         return {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / db_path}
-    m = re.match(
-        r"postgres(?:ql)?://(?P<user>[^:]+):(?P<password>[^@]+)@"
-        r"(?P<host>[^:/]+)(?::(?P<port>\d+))?/(?P<name>.+)",
-        url,
-    )
-    if not m:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("postgres", "postgresql"):
         raise ValueError(f"Cannot parse DATABASE_URL: {url!r}")
-    return {
+    result: dict[str, object] = {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": m.group("name"),
-        "USER": m.group("user"),
-        "PASSWORD": m.group("password"),
-        "HOST": m.group("host"),
-        "PORT": m.group("port") or "5432",
+        "NAME": parsed.path.lstrip("/"),
+        "USER": parsed.username or "",
+        "PASSWORD": parsed.password or "",
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port) if parsed.port else "5432",
     }
+    if parsed.query:
+        qs = parse_qs(parsed.query)
+        options = {k: v[0] for k, v in qs.items()}
+        result["OPTIONS"] = options
+    return result
 
 
 SECRET_KEY: str = config("DJANGO_SECRET_KEY")
 DEBUG: bool = config("DJANGO_DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS: list[str] = config("ALLOWED_HOSTS", default="localhost", cast=Csv())
+ROUTE_API_KEY: str = config("ROUTE_API_KEY", default="")
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -63,8 +65,12 @@ DATABASES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
-    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "DEFAULT_RENDERER_CLASSES": [
+        "djangorestframework_camel_case.render.CamelCaseJSONRenderer",
+    ],
+    "DEFAULT_PARSER_CLASSES": [
+        "djangorestframework_camel_case.parser.CamelCaseJSONParser",
+    ],
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
 }

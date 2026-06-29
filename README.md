@@ -39,36 +39,56 @@ New to the repo? Read this section first.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────┐
-│  Frontend (Mitra's domain)                   │
-│  React SPA — two views:                      │
-│    • Dispatcher Dashboard                    │
-│    • Interactive Map (Mapbox or Leaflet)     │
-└────────────────────┬─────────────────────────┘
-                     │ /api/*
-                     ▼
-┌──────────────────────────────────────────────┐     ┌─────────────────────────┐
-│  Django REST Framework (Karl)                │────▶│  NYC Open Data API      │
-│  /api/routes, /api/outages, …                │     │  Elevator complaints     │
-│  Geospatial proximity logic                  │     │  (polled periodically)  │
-└────────────────────┬─────────────────────────┘     └─────────────────────────┘
-                     │
-                     ▼
-          ┌──────────────────────┐
-          │  PostgreSQL + PostGIS│
-          │  Routes, providers,  │
-          │  outage records,     │
-          │  ≤0.5-mile queries   │
-          └──────────────────────┘
+```mermaid
+flowchart TD
+    Dispatcher(["Dispatcher"])
+
+    subgraph FE ["Frontend · React 19 + Vite · Mitra"]
+        Dashboard["Dispatcher Dashboard"]
+        MapView["Interactive Map"]
+    end
+
+    subgraph BE ["Backend · Django REST Framework · Karl"]
+        API["REST API\n/api/outages  /api/routes  /api/buildings\n/api/dashboard/summary  /api/providers"]
+        Pipeline["Ingest pipeline\ningest_outages · ingest_weather · ingest_dfta\ningest_elevator_devices · compute_risk_scores"]
+    end
+
+    DB[("PostgreSQL + PostGIS\nelevator_complaints · building_risk_scores\nweather_days · dfta_* · routes")]
+
+    NOD["NYC Open Data\nkqwi-7ncn · e5aq-a4j2 · juyv-2jek · ygfr-ij6t"]
+    OM["Open-Meteo\nHistorical Archive"]
+    GS["NYC Planning\nGeoSearch API"]
+
+    Dispatcher --> FE
+    FE -->|/api/*| API
+    API <-->|PostGIS ST_DWithin| DB
+    Pipeline -->|upsert| DB
+    Pipeline -->|poll| NOD
+    Pipeline -->|fetch| OM
+    API -.->|geocode route stops| GS
+    Pipeline -.->|geocode BIN fallback| GS
 ```
 
 ### Data flow
 
-1. **Ingestion** — The backend periodically polls the NYC Open Data elevator-complaint API and writes new records to PostgreSQL.
-2. **Processing** — When a dispatcher loads a route, the backend runs a PostGIS geospatial query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
-3. **Delivery** — If an overlap is detected, the API response includes an `outageAlert` flag and, where available, alternative routing coordinates.
-4. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
+1. **Ingestion** — Five management commands populate the database (run in order):
+   - `ingest_outages` — polls the NYC Open Data elevator-complaint API and upserts `elevator_complaints`
+   - `ingest_weather` — fetches daily temperature maxima from Open-Meteo archive (2018–today) into `weather_days`
+   - `ingest_forecast` — fetches the 7-day temperature forecast from Open-Meteo into `weather_forecasts`; should run daily
+   - `ingest_dfta` — fetches DFTA senior center (and optional provider) locations from NYC Open Data
+   - `ingest_elevator_devices` — two-step join through `e5aq-a4j2` and `juyv-2jek` to populate `building_risk_scores.is_single_elevator`; must run after `compute_risk_scores`
+
+2. **Risk scoring** — `compute_risk_scores` runs after the ingest commands and scores every building that appears in the complaint history:
+   - Identifies **chronic offenders** (≥1 complaint in 12mo AND ≥3 complaints in 3yr)
+   - Computes a 0–3 **composite vulnerability score**: +1 if a DFTA provider is within 0.5 mi, +1 if a senior center is within 0.5 mi, +1 if the building's community board is in the top tercile by summer complaint ratio
+   - Computes **heat correlation metrics** per building: `heat_ratio` (heat-week vs. non-heat-week complaint rate), Pearson r/p, and a confidence level
+   - Results are stored in `building_risk_scores` and exposed via `/api/buildings/`
+
+3. **Route alerting** — When a dispatcher loads a route, the backend runs a PostGIS `ST_DWithin` query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
+
+4. **Delivery** — The API response includes an `outage_alert` flag on each stop, and `/api/buildings/` provides ranked risk scores for the full building inventory.
+
+5. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
 
 Deployed on [Render](https://render.com) via Blueprint (`render.yaml`). The frontend proxies all `/api` requests to the Django backend.
 
@@ -137,6 +157,37 @@ pre-commit --version
 
 ---
 
+## Local database setup
+
+This project requires PostgreSQL with the PostGIS extension. Two options:
+
+### Option A — Neon (free cloud Postgres, recommended for quick setup)
+
+1. Create a free project at [neon.tech](https://neon.tech).
+2. In the Neon dashboard go to **Database → Extensions** and enable `postgis` (or run `CREATE EXTENSION postgis;` in the SQL editor).
+3. Copy the connection string from **Dashboard → Connection Details**. It looks like:
+   ```
+   postgresql://user:password@ep-xxxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+   ```
+4. Paste it as `DATABASE_URL` in `backend/.env`.
+
+> **Note:** Use the **direct connection** string, not the pooled one. Neon's direct connection supports `CREATE EXTENSION` needed by the migrations. The `?sslmode=require` suffix is handled automatically.
+
+### Option B — Docker (matches CI exactly, works offline)
+
+```bash
+docker run --name pcro-db \
+  -e POSTGRES_USER=pcro \
+  -e POSTGRES_PASSWORD=pcro \
+  -e POSTGRES_DB=pcro \
+  -p 5432:5432 \
+  -d postgis/postgis:16-3.4
+```
+
+Then set `DATABASE_URL=postgresql://pcro:pcro@localhost:5432/pcro` in `backend/.env`.
+
+---
+
 ## Getting Started
 
 ```bash
@@ -150,7 +201,7 @@ pre-commit install --hook-type commit-msg
 
 # ── Backend ──────────────────────────────────────────────
 cd backend
-cp .env.example .env        # fill in DJANGO_SECRET_KEY and DATABASE_URL
+cp .env.example .env        # fill in DJANGO_SECRET_KEY and DATABASE_URL (see above)
 uv sync                     # installs Python + all dependencies
 uv run python manage.py migrate
 uv run python manage.py runserver   # http://localhost:8000
@@ -287,10 +338,14 @@ The framework, library choices, and toolchain are Mitra's to evolve — these co
 |---|---|---|---|
 | NYC Open Data | DOB Elevator Complaints | `kqwi-7ncn` | Active complaint feed — the "possible outage" signal |
 | NYC Open Data | DOB NOW Safety Compliance | `e5aq-a4j2` | Maps BIN → lat/lon for complaint locations |
+| NYC Open Data | DFTA Senior Centers | `ygfr-ij6t` | Senior center locations for vulnerability proximity scoring |
 | NYC Planning | GeoSearch API | — | Fallback geocoding when a BIN has no device record |
-| Open-Meteo | Historical + Forecast | — | Heat forecast for predictive risk scoring |
+| Open-Meteo | Historical Archive | — | Daily temperature maxima for heat correlation; 2018–present |
+| Open-Meteo | Forecast API | — | 7-day temperature forecast; populates `weather_forecasts` for heat-advisory detection |
 
 **Important:** `kqwi-7ncn` is not a real-time outage feed — it reflects complaints filed by residents/managers, typically hours to days after an actual stoppage. Alert copy should say "reported outage" or "active complaint," not "confirmed outage." See [`docs/nyc-open-data.md`](./docs/nyc-open-data.md) for the full integration guide, including the critical date-format gotcha, the ingest polling pattern, and the PostGIS schema.
+
+**Note on `ygfr-ij6t`:** The DFTA senior centers dataset has a typo in the `community_board` column name — it appears as `comminuty_board` (missing the second "n"). The ingest command handles this automatically.
 
 ---
 
@@ -332,6 +387,8 @@ The backend requires these env vars (Render generates/injects most of them via t
 | `DATABASE_URL` | Injected from `pcro-db` |
 | `DJANGO_DEBUG` | Set to `False` in `render.yaml` |
 | `ALLOWED_HOSTS` | Set to `.onrender.com` in `render.yaml` |
+| `SOCRATA_APP_TOKEN` | Optional; raises NYC Open Data rate limits |
+| `DFTA_PROVIDER_DATASET_ID` | Optional; Socrata resource ID for DFTA provider directory |
 
 ---
 
