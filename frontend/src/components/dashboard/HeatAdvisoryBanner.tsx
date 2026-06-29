@@ -81,15 +81,20 @@ function ForecastStrip({ forecast }: ForecastStripProps) {
 }
 
 function formatDayLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { weekday: "short" });
+  return parseLocalDate(iso).toLocaleDateString("en-US", { weekday: "short" });
 }
 
 function formatShort(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
+  return parseLocalDate(iso).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
+}
+
+function parseLocalDate(iso: string): Date {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 function SunIcon() {
