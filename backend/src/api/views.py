@@ -8,6 +8,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.alerts import classify_severity, get_is_heat_week, suggest_action
 from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 from api.permissions import HasRouteApiKey
@@ -97,21 +98,29 @@ NEARBY_OUTAGES_SQL = """
 # Used internally by RouteDetailView — compact shape for embedded stop alerts.
 PROXIMITY_SQL = """
     SELECT
-        complaint_number,
-        bin,
-        house_number,
-        house_street,
-        zip_code,
-        date_entered,
+        ec.complaint_number,
+        ec.bin,
+        ec.house_number,
+        ec.house_street,
+        ec.zip_code,
+        ec.date_entered,
         ST_Distance(
-            location::geography,
+            ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
-        ) AS distance_m
-    FROM elevator_complaints
-    WHERE status = 'ACTIVE'
-      AND location IS NOT NULL
+        ) AS distance_m,
+        COALESCE(brs.is_chronic, false) AS is_chronic,
+        CASE
+            WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
+            ELSE brs.is_single_elevator
+        END AS is_single_elevator,
+        brs.heat_ratio,
+        brs.confidence
+    FROM elevator_complaints ec
+    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+    WHERE ec.status = 'ACTIVE'
+      AND ec.location IS NOT NULL
       AND ST_DWithin(
-            location::geography,
+            ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
             %s
           )
@@ -194,7 +203,13 @@ class DashboardSummaryView(APIView):
             cursor.execute("SELECT COUNT(*) FROM building_risk_scores WHERE is_chronic = true")
             chronic_offenders: int = cursor.fetchone()[0]
             cursor.execute(
-                "SELECT COUNT(*) FROM building_risk_scores WHERE is_single_elevator = true"
+                """
+                SELECT COUNT(*) FROM building_risk_scores
+                WHERE CASE WHEN elevator_count_override IS NOT NULL
+                           THEN (elevator_count_override = 1)
+                           ELSE is_single_elevator
+                      END = true
+                """
             )
             single_elevator_buildings: int = cursor.fetchone()[0]
             cursor.execute("SELECT MAX(fetched_at) FROM elevator_complaints")
@@ -263,7 +278,7 @@ class DashboardSummaryView(APIView):
 
         outages_trend = [
             {
-                "date": (d.strftime("%-d %b") if isinstance(d, datetime.date) else str(d)),
+                "date": (f"{d.day} {d.strftime('%b')}" if isinstance(d, datetime.date) else str(d)),
                 "outages": int(count),
             }
             for d, count in trend_rows
@@ -341,10 +356,27 @@ class RouteDetailView(RetrieveAPIView[Route]):
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         route = self.get_object()
         stops = list(route.stops.all())
+        is_heat_week = get_is_heat_week()
         alerts_by_stop_id: dict[int, list[dict[str, Any]]] = {}
         for stop in stops:
             if stop.lat is not None and stop.lon is not None:
-                alerts_by_stop_id[stop.pk] = _nearby_outages(stop.lat, stop.lon)
+                raw_alerts = _nearby_outages(stop.lat, stop.lon)
+                for alert in raw_alerts:
+                    severity = classify_severity(
+                        distance_m=float(alert["distance_m"]),
+                        is_chronic=bool(alert.get("is_chronic", False)),
+                        is_single_elevator=alert.get("is_single_elevator"),
+                        is_heat_week=is_heat_week,
+                        heat_ratio=alert.get("heat_ratio"),
+                        confidence=str(alert.get("confidence") or "low"),
+                    )
+                    alert["severity"] = severity
+                    alert["suggested_action"] = suggest_action(
+                        severity=severity,
+                        is_single_elevator=alert.get("is_single_elevator"),
+                        is_heat_week=is_heat_week,
+                    )
+                alerts_by_stop_id[stop.pk] = raw_alerts
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
 
@@ -381,6 +413,11 @@ class BuildingDetailView(APIView):
     GET  /api/buildings/<bin>/ — full risk score record
     PATCH /api/buildings/<bin>/ — set/clear elevator_count_override
     """
+
+    def get_permissions(self) -> list[Any]:
+        if self.request.method == "PATCH":
+            return [HasRouteApiKey()]
+        return []
 
     def get(self, request: Request, bin: str) -> Response:
         building = get_object_or_404(BuildingRiskScore, bin=bin)

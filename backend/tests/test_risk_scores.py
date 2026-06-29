@@ -9,6 +9,9 @@ import pytest
 from django.db import connection
 from django.test import Client
 
+_TEST_API_KEY = "test-buildings-key"
+_AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {_TEST_API_KEY}"}
+
 
 def _insert_complaint(
     complaint_number: str,
@@ -672,6 +675,10 @@ class TestIngestDFTA:
 class TestBuildingOverride:
     """Tests for PATCH /api/buildings/<bin>/ elevator_count_override."""
 
+    @pytest.fixture(autouse=True)
+    def _set_api_key(self, settings: Any) -> None:
+        settings.ROUTE_API_KEY = _TEST_API_KEY
+
     def _seed_building(
         self,
         bin_id: str,
@@ -725,6 +732,16 @@ class TestBuildingOverride:
 
     # ── endpoint surface ────────────────────────────────────────────────────
 
+    def test_patch_requires_api_key(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-AUTH")
+        resp = client.patch(
+            "/api/buildings/B-OVR-AUTH/",
+            data=json.dumps({"elevatorCountOverride": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 403
+
     def test_patch_sets_single_elevator_override(self) -> None:
         client = Client()
         self._seed_building("B-OVR-001")
@@ -732,6 +749,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-001/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] == 1
@@ -743,6 +761,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-002/",
             data=json.dumps({"elevatorCountOverride": 4}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] == 4
@@ -754,6 +773,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-003/",
             data=json.dumps({"elevatorCountOverride": None}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] is None
@@ -765,6 +785,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-004/",
             data=json.dumps({"elevatorCountOverride": 0}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 400
 
@@ -775,6 +796,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-005/",
             data=json.dumps({"elevatorCountOverride": -1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 400
 
@@ -784,6 +806,7 @@ class TestBuildingOverride:
             "/api/buildings/DOES-NOT-EXIST/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 404
 
@@ -804,6 +827,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-006/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")
@@ -820,6 +844,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-007/",
             data=json.dumps({"elevatorCountOverride": 3}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")
@@ -841,6 +866,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-008/",
             data=json.dumps({"elevatorCountOverride": None}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")

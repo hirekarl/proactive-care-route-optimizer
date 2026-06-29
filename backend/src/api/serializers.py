@@ -18,6 +18,8 @@ class OutageAlertSerializer(serializers.Serializer):  # type: ignore[type-arg]
     date_entered = serializers.DateField(allow_null=True, required=False)
     distance_m = serializers.FloatField()
     outage_alert = serializers.SerializerMethodField()
+    severity = serializers.CharField()
+    suggested_action = serializers.CharField()
 
     def get_outage_alert(self, obj: dict[str, Any]) -> bool:
         return True

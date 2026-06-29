@@ -199,6 +199,10 @@ class Command(BaseCommand):
             weather_df["week_start"] = weather_df["date"].dt.to_period("W").dt.start_time
             weekly_weather = weather_df.groupby("week_start")["weekly_max_f"].max().reset_index()
             weekly_weather["is_heat_week"] = weekly_weather["weekly_max_f"] >= HEAT_THRESHOLD_F
+            # Restrict to the 3yr complaint window so out-of-window weeks don't bias Pearson r.
+            weekly_weather = weekly_weather[
+                weekly_weather["week_start"] >= pd.Timestamp(cutoff_3yr)
+            ].reset_index(drop=True)
             self.stdout.write(f"  {len(weekly_weather)} weeks of weather data.")
 
         # ── 7. Weekly complaints per BIN for heat correlation ─────────────

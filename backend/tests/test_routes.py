@@ -131,6 +131,38 @@ class TestRoutes:
         stop = detail_response.json()["stops"][0]
         assert stop["outageAlerts"] == []
 
+    def test_route_detail_alerts_include_severity_and_suggested_action(self) -> None:
+        client = Client()
+        complaint = ElevatorComplaintFactory(lat=40.7484, lon=-73.9857)
+        _set_location(complaint.complaint_number, -73.9857, 40.7484)
+
+        with patch("api.geocoding.httpx.get") as mock_get:
+            mock_get.return_value.raise_for_status = lambda: None
+            mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
+
+            create_response = client.post(
+                "/api/routes/",
+                data=json.dumps(
+                    {
+                        "name": "Route Sev",
+                        "date": "2026-06-27",
+                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                    }
+                ),
+                content_type="application/json",
+                **AUTH,
+            )
+
+        route_id = create_response.json()["id"]
+        detail_response = client.get(f"/api/routes/{route_id}/", **AUTH)
+        assert detail_response.status_code == 200
+        stop = detail_response.json()["stops"][0]
+        assert len(stop["outageAlerts"]) == 1
+        alert = stop["outageAlerts"][0]
+        assert alert["severity"] in ("critical", "warning", "watch")
+        assert isinstance(alert["suggestedAction"], str)
+        assert len(alert["suggestedAction"]) > 0
+
     def test_missing_api_key_returns_403(self) -> None:
         client = Client()
         response = client.post(

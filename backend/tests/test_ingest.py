@@ -53,6 +53,7 @@ def test_ingest_creates_complaint(monkeypatch: pytest.MonkeyPatch) -> None:
     complaint = ElevatorComplaint.objects.get(complaint_number="9999001")
     assert complaint.status == "ACTIVE"
     assert complaint.bin == "1085680"
+    assert complaint.community_board == "111"
     assert complaint.date_entered == datetime.date(2026, 6, 15)
     assert abs(complaint.lat - 40.7960) < 0.001
     assert abs(complaint.lon - (-73.9497)) < 0.001

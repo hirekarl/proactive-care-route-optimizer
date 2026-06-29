@@ -83,6 +83,35 @@ class TestDashboardSummaryView:
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["singleElevatorBuildings"] == 1
 
+    def test_single_elevator_count_respects_elevator_count_override(self) -> None:
+        # override=1, is_single_elevator=None → should count as single elevator
+        from api.models import BuildingRiskScore
+
+        BuildingRiskScore.objects.update_or_create(
+            bin="D-SE-OVR",
+            defaults={
+                "house_number": "1",
+                "house_street": "Override St",
+                "zip_code": "10001",
+                "community_board": "101",
+                "lat": 40.758,
+                "lon": -73.985,
+                "complaints_1yr": 1,
+                "complaints_3yr": 3,
+                "is_chronic": True,
+                "vulnerability_score": 0,
+                "score_provider": 0,
+                "score_center": 0,
+                "score_heat_cb": 0,
+                "n_complaints_analyzed": 0,
+                "confidence": "low",
+                "is_single_elevator": None,
+                "elevator_count_override": 1,
+            },
+        )
+        resp = Client().get("/api/dashboard/summary/")
+        assert resp.json()["singleElevatorBuildings"] == 1
+
     def test_heat_risk_multiplier_falls_back_when_no_data(self) -> None:
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["heatRiskMultiplier"] == 1.20
@@ -121,7 +150,7 @@ class TestDashboardSummaryView:
         resp = Client().get("/api/dashboard/summary/")
         trend = resp.json()["outagesTrend"]
         assert isinstance(trend, list)
-        today_label = today.strftime("%-d %b")
+        today_label = f"{today.day} {today.strftime('%b')}"
         assert any(entry["date"] == today_label for entry in trend)
 
     def test_heat_forecast_empty_when_table_unpopulated(self) -> None:
