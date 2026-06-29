@@ -32,7 +32,15 @@ BOROUGH_BY_CODE = {
 
 _HEAT_RISK_MULTIPLIER_FALLBACK = 1.20  # EDA baseline; used when no scored buildings exist yet
 
-ALL_OUTAGES_SQL = """
+# Single source for the effective-single-elevator expression used in all proximity queries.
+# DashboardSummaryView's inline SQL omits the brs alias and is kept separately.
+_EFFECTIVE_SINGLE_ELEVATOR_SQL = (
+    "CASE WHEN brs.elevator_count_override IS NOT NULL"
+    " THEN (brs.elevator_count_override = 1)"
+    " ELSE brs.is_single_elevator END"
+)
+
+ALL_OUTAGES_SQL = f"""
     SELECT
         ec.complaint_number,
         ec.bin,
@@ -45,20 +53,14 @@ ALL_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(
-            CASE
-                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
-                ELSE brs.is_single_elevator
-            END,
-            false
-        ) AS single_elevator
+        COALESCE({_EFFECTIVE_SINGLE_ELEVATOR_SQL}, false) AS single_elevator
     FROM elevator_complaints ec
     LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
     WHERE ec.status = 'ACTIVE' AND ec.location IS NOT NULL
     ORDER BY ec.date_entered DESC
 """
 
-NEARBY_OUTAGES_SQL = """
+NEARBY_OUTAGES_SQL = f"""
     SELECT
         ec.complaint_number,
         ec.bin,
@@ -71,13 +73,7 @@ NEARBY_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(
-            CASE
-                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
-                ELSE brs.is_single_elevator
-            END,
-            false
-        ) AS single_elevator,
+        COALESCE({_EFFECTIVE_SINGLE_ELEVATOR_SQL}, false) AS single_elevator,
         ST_Distance(
             ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
@@ -94,8 +90,8 @@ NEARBY_OUTAGES_SQL = """
     ORDER BY distance_m ASC
 """
 
-# Used internally by RouteDetailView — compact shape for embedded stop alerts.
-PROXIMITY_SQL = """
+# Single-point proximity shape for embedded stop alerts (used by _nearby_outages).
+PROXIMITY_SQL = f"""
     SELECT
         ec.complaint_number,
         ec.bin,
@@ -108,10 +104,7 @@ PROXIMITY_SQL = """
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
         ) AS distance_m,
         COALESCE(brs.is_chronic, false) AS is_chronic,
-        CASE
-            WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
-            ELSE brs.is_single_elevator
-        END AS is_single_elevator,
+        {_EFFECTIVE_SINGLE_ELEVATOR_SQL} AS is_single_elevator,
         brs.heat_ratio,
         brs.confidence
     FROM elevator_complaints ec
@@ -124,6 +117,46 @@ PROXIMITY_SQL = """
             %s
           )
     ORDER BY distance_m ASC
+"""
+
+# Batched version of PROXIMITY_SQL: one query for all stops in a route.
+# Each (stop_id, complaint_number) pair is unique — complaints are at fixed locations,
+# so a given complaint is either within range of a stop or it isn't.
+BATCH_PROXIMITY_SQL = f"""
+    WITH stop_points AS (
+        SELECT
+            UNNEST(%s::int[])    AS stop_id,
+            UNNEST(%s::float8[]) AS slon,
+            UNNEST(%s::float8[]) AS slat
+    )
+    SELECT
+        sp.stop_id,
+        ec.complaint_number,
+        ec.bin,
+        ec.house_number,
+        ec.house_street,
+        ec.zip_code,
+        ec.date_entered,
+        ST_Distance(
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography
+        ) AS distance_m,
+        COALESCE(brs.is_chronic, false) AS is_chronic,
+        {_EFFECTIVE_SINGLE_ELEVATOR_SQL} AS is_single_elevator,
+        brs.heat_ratio,
+        brs.confidence
+    FROM stop_points sp
+    JOIN elevator_complaints ec ON (
+        ec.status = 'ACTIVE'
+        AND ec.location IS NOT NULL
+        AND ST_DWithin(
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography,
+            %s
+        )
+    )
+    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+    ORDER BY sp.stop_id, distance_m ASC
 """
 
 
@@ -158,6 +191,26 @@ def _run_query(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]
 def _nearby_outages(lat: float, lon: float) -> list[dict[str, Any]]:
     """Compact proximity results for embedding in route-stop alert lists."""
     return _run_query(PROXIMITY_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
+
+
+def _batch_nearby_outages(stops: list[RouteStop]) -> dict[int, list[dict[str, Any]]]:
+    """Single-query proximity lookup for all geocoded stops; returns alerts grouped by stop pk."""
+    stop_ids: list[int] = []
+    lons: list[float] = []
+    lats: list[float] = []
+    for s in stops:
+        if s.lat is not None and s.lon is not None:
+            stop_ids.append(s.pk)
+            lons.append(s.lon)
+            lats.append(s.lat)
+    if not stop_ids:
+        return {}
+    rows = _run_query(BATCH_PROXIMITY_SQL, [stop_ids, lons, lats, ALERT_RADIUS_M])
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        stop_id: int = row.pop("stop_id")
+        result.setdefault(stop_id, []).append(row)
+    return result
 
 
 class HealthCheckView(APIView):
@@ -356,26 +409,23 @@ class RouteDetailView(RetrieveAPIView[Route]):
         route = self.get_object()
         stops = list(route.stops.all())
         is_heat_week = get_is_heat_week()
-        alerts_by_stop_id: dict[int, list[dict[str, Any]]] = {}
-        for stop in stops:
-            if stop.lat is not None and stop.lon is not None:
-                raw_alerts = _nearby_outages(stop.lat, stop.lon)
-                for alert in raw_alerts:
-                    severity = classify_severity(
-                        distance_m=float(alert["distance_m"]),
-                        is_chronic=bool(alert.get("is_chronic", False)),
-                        is_single_elevator=alert.get("is_single_elevator"),
-                        is_heat_week=is_heat_week,
-                        heat_ratio=alert.get("heat_ratio"),
-                        confidence=str(alert.get("confidence") or "low"),
-                    )
-                    alert["severity"] = severity
-                    alert["suggested_action"] = suggest_action(
-                        severity=severity,
-                        is_single_elevator=alert.get("is_single_elevator"),
-                        is_heat_week=is_heat_week,
-                    )
-                alerts_by_stop_id[stop.pk] = raw_alerts
+        alerts_by_stop_id = _batch_nearby_outages(stops)
+        for raw_alerts in alerts_by_stop_id.values():
+            for alert in raw_alerts:
+                severity = classify_severity(
+                    distance_m=float(alert["distance_m"]),
+                    is_chronic=bool(alert.get("is_chronic", False)),
+                    is_single_elevator=alert.get("is_single_elevator"),
+                    is_heat_week=is_heat_week,
+                    heat_ratio=alert.get("heat_ratio"),
+                    confidence=str(alert.get("confidence") or "low"),
+                )
+                alert["severity"] = severity
+                alert["suggested_action"] = suggest_action(
+                    severity=severity,
+                    is_single_elevator=alert.get("is_single_elevator"),
+                    is_heat_week=is_heat_week,
+                )
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
 
