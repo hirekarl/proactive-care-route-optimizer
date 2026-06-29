@@ -6,16 +6,12 @@ export interface CardProjection {
   visible: boolean;
   depth: number;
   zIndex: number;
-  tiltDeg: number;
-  featured: number;
 }
 
 export const landingScrollState: {
   offset: number;
-  carouselAngle: number;
   cards: CardProjection[];
 } = {
   offset: 0,
-  carouselAngle: 0,
   cards: [],
 };

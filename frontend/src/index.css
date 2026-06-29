@@ -146,19 +146,16 @@ body {
   inset: 0;
   z-index: 4;
   pointer-events: none;
-  perspective: 1400px;
-  transform-style: preserve-3d;
 }
 
 .landing__card {
   position: absolute;
   top: 0;
   left: 0;
-  width: 17rem;
+  width: 16rem;
   will-change: opacity, transform;
   transition: none;
   transform-origin: center;
-  backface-visibility: hidden;
 }
 
 .landing__enter {
