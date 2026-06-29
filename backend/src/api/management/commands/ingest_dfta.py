@@ -8,6 +8,7 @@ from api.geocoding import geocode_address
 from api.models import DFTAProvider, DFTASeniorCenter
 
 SENIOR_CENTERS_URL = "https://data.cityofnewyork.us/resource/ygfr-ij6t.json"
+DEFAULT_PROVIDER_DATASET = "cqc8-am9x"
 PAGE_SIZE = 50000
 
 
@@ -17,11 +18,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument(
             "--provider-dataset",
-            default="",
+            default=DEFAULT_PROVIDER_DATASET,
             help=(
                 "Socrata resource ID for the DFTA provider directory "
-                "(e.g. cwsm-2ns3). Set DFTA_PROVIDER_DATASET_ID env var "
-                "or pass --provider-dataset to enable provider ingestion."
+                f"(default: {DEFAULT_PROVIDER_DATASET})."
             ),
         )
 
@@ -33,19 +33,8 @@ class Command(BaseCommand):
 
         self._ingest_senior_centers(headers)
 
-        provider_dataset = str(options.get("provider_dataset") or "").strip()
-        if not provider_dataset:
-            provider_dataset = str(env_config("DFTA_PROVIDER_DATASET_ID", default="")).strip()
-
-        if provider_dataset:
-            self._ingest_providers(provider_dataset, headers)
-        else:
-            self.stdout.write(
-                self.style.WARNING(
-                    "No DFTA provider dataset ID supplied — skipping provider ingestion.\n"
-                    "Set DFTA_PROVIDER_DATASET_ID in .env or pass --provider-dataset."
-                )
-            )
+        provider_dataset = str(options.get("provider_dataset") or DEFAULT_PROVIDER_DATASET).strip()
+        self._ingest_providers(provider_dataset, headers)
 
     def _ingest_senior_centers(self, headers: dict[str, str]) -> None:
         self.stdout.write("Fetching DFTA senior centers (ygfr-ij6t)...")
@@ -91,7 +80,8 @@ class Command(BaseCommand):
         providers: list[DFTAProvider] = []
         for row in rows:
             provider_id = (
-                row.get("contractid")
+                row.get("dfta_id")
+                or row.get("contractid")
                 or row.get("provider_id")
                 or row.get("facilityid")
                 or row.get("objectid")
@@ -103,7 +93,8 @@ class Command(BaseCommand):
                 continue
             lon, lat = lonlat
             street = (
-                row.get("address")
+                row.get("programaddress")
+                or row.get("address")
                 or (
                     (row.get("house_number") or "").strip()
                     + " "
@@ -113,7 +104,7 @@ class Command(BaseCommand):
             providers.append(
                 DFTAProvider(
                     provider_id=str(provider_id),
-                    name=row.get("provider_name") or row.get("name", ""),
+                    name=row.get("sponsorname") or row.get("provider_name") or row.get("name", ""),
                     borough=row.get("borough", ""),
                     address=street,
                     lat=lat,
@@ -143,7 +134,8 @@ class Command(BaseCommand):
                 pass
         # Fallback: geocode from address fields
         parts = [
-            row.get("address")
+            row.get("programaddress")
+            or row.get("address")
             or ((row.get("house_number") or "") + " " + (row.get("street_name") or "")).strip(),
             row.get("borough", ""),
             "NY",

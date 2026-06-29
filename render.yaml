@@ -58,8 +58,6 @@ services:
         value: "3.12"
       - key: SOCRATA_APP_TOKEN
         sync: false
-      - key: DFTA_PROVIDER_DATASET_ID
-        sync: false
 
   # Weekly purge: runs at 08:00 UTC every Sunday.
   # Deletes Route rows (and cascade RouteStop) older than 90 days.
