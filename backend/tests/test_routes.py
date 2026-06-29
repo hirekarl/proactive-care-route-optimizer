@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,6 +19,9 @@ GEOSEARCH_RESPONSE = {
     ]
 }
 
+TEST_API_KEY = "dispatcher-test-key"
+AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {TEST_API_KEY}"}
+
 
 def _set_location(complaint_number: str, lon: float, lat: float) -> None:
     with connection.cursor() as cursor:
@@ -29,93 +33,119 @@ def _set_location(complaint_number: str, lon: float, lat: float) -> None:
 
 
 @pytest.mark.django_db
-def test_create_route_geocodes_stops(client: Client) -> None:
-    with patch("api.geocoding.httpx.get") as mock_get:
-        mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
+class TestRoutes:
+    @pytest.fixture(autouse=True)
+    def _set_api_key(self, settings: Any) -> None:
+        settings.ROUTE_API_KEY = TEST_API_KEY
 
+    def test_create_route_geocodes_stops(self) -> None:
+        client = Client()
+        with patch("api.geocoding.httpx.get") as mock_get:
+            mock_get.return_value.raise_for_status = lambda: None
+            mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
+
+            response = client.post(
+                "/api/routes/",
+                data=json.dumps(
+                    {
+                        "name": "Route A",
+                        "date": "2026-06-27",
+                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                    }
+                ),
+                content_type="application/json",
+                **AUTH,
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Route A"
+        assert len(data["stops"]) == 1
+        stop = data["stops"][0]
+        assert abs(stop["lat"] - 40.7484) < 0.001
+        assert abs(stop["lon"] - (-73.9857)) < 0.001
+        assert Route.objects.count() == 1
+        assert RouteStop.objects.count() == 1
+
+    def test_create_route_invalid_payload_returns_400(self) -> None:
+        client = Client()
         response = client.post(
             "/api/routes/",
-            data=json.dumps(
-                {
-                    "name": "Route A",
-                    "date": "2026-06-27",
-                    "stops": ["350 Fifth Avenue New York NY 10118"],
-                }
-            ),
+            data=json.dumps({"name": "Route A"}),
             content_type="application/json",
+            **AUTH,
         )
+        assert response.status_code == 400
 
-    assert response.status_code == 201
-    data = response.json()
-    assert data["name"] == "Route A"
-    assert len(data["stops"]) == 1
-    stop = data["stops"][0]
-    assert abs(stop["lat"] - 40.7484) < 0.001
-    assert abs(stop["lon"] - (-73.9857)) < 0.001  # lon stays as-is (not snake_case)
-    assert Route.objects.count() == 1
-    assert RouteStop.objects.count() == 1
+    def test_route_detail_embeds_outage_alerts(self) -> None:
+        client = Client()
+        complaint = ElevatorComplaintFactory(lat=40.7484, lon=-73.9857)
+        _set_location(complaint.complaint_number, -73.9857, 40.7484)
 
+        with patch("api.geocoding.httpx.get") as mock_get:
+            mock_get.return_value.raise_for_status = lambda: None
+            mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
 
-@pytest.mark.django_db
-def test_create_route_invalid_payload_returns_400(client: Client) -> None:
-    response = client.post(
-        "/api/routes/",
-        data=json.dumps({"name": "Route A"}),
-        content_type="application/json",
-    )
-    assert response.status_code == 400
+            create_response = client.post(
+                "/api/routes/",
+                data=json.dumps(
+                    {
+                        "name": "Route B",
+                        "date": "2026-06-27",
+                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                    }
+                ),
+                content_type="application/json",
+                **AUTH,
+            )
 
+        route_id = create_response.json()["id"]
+        detail_response = client.get(f"/api/routes/{route_id}/", **AUTH)
+        assert detail_response.status_code == 200
+        stop = detail_response.json()["stops"][0]
+        assert len(stop["outageAlerts"]) == 1
+        assert stop["outageAlerts"][0]["outageAlert"] is True
 
-@pytest.mark.django_db
-def test_route_detail_embeds_outage_alerts(client: Client) -> None:
-    complaint = ElevatorComplaintFactory(lat=40.7484, lon=-73.9857)
-    _set_location(complaint.complaint_number, -73.9857, 40.7484)
+    def test_route_detail_no_alerts_when_no_nearby_complaints(self) -> None:
+        client = Client()
+        with patch("api.geocoding.httpx.get") as mock_get:
+            mock_get.return_value.raise_for_status = lambda: None
+            mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
 
-    with patch("api.geocoding.httpx.get") as mock_get:
-        mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
+            create_response = client.post(
+                "/api/routes/",
+                data=json.dumps(
+                    {
+                        "name": "Route C",
+                        "date": "2026-06-27",
+                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                    }
+                ),
+                content_type="application/json",
+                **AUTH,
+            )
 
-        create_response = client.post(
+        route_id = create_response.json()["id"]
+        detail_response = client.get(f"/api/routes/{route_id}/", **AUTH)
+        assert detail_response.status_code == 200
+        stop = detail_response.json()["stops"][0]
+        assert stop["outageAlerts"] == []
+
+    def test_missing_api_key_returns_403(self) -> None:
+        client = Client()
+        response = client.post(
             "/api/routes/",
-            data=json.dumps(
-                {
-                    "name": "Route B",
-                    "date": "2026-06-27",
-                    "stops": ["350 Fifth Avenue New York NY 10118"],
-                }
-            ),
+            data=json.dumps({}),
             content_type="application/json",
         )
+        assert response.status_code == 403
 
-    route_id = create_response.json()["id"]
-    detail_response = client.get(f"/api/routes/{route_id}/")
-    assert detail_response.status_code == 200
-    stop = detail_response.json()["stops"][0]
-    assert len(stop["outageAlerts"]) == 1
-    assert stop["outageAlerts"][0]["outageAlert"] is True
-
-
-@pytest.mark.django_db
-def test_route_detail_no_alerts_when_no_nearby_complaints(client: Client) -> None:
-    with patch("api.geocoding.httpx.get") as mock_get:
-        mock_get.return_value.raise_for_status = lambda: None
-        mock_get.return_value.json = lambda: GEOSEARCH_RESPONSE
-
-        create_response = client.post(
+    def test_wrong_api_key_returns_403(self) -> None:
+        client = Client()
+        response = client.post(
             "/api/routes/",
-            data=json.dumps(
-                {
-                    "name": "Route C",
-                    "date": "2026-06-27",
-                    "stops": ["350 Fifth Avenue New York NY 10118"],
-                }
-            ),
+            data=json.dumps({}),
             content_type="application/json",
+            HTTP_AUTHORIZATION="Api-Key wrong-key",
         )
-
-    route_id = create_response.json()["id"]
-    detail_response = client.get(f"/api/routes/{route_id}/")
-    assert detail_response.status_code == 200
-    stop = detail_response.json()["stops"][0]
-    assert stop["outageAlerts"] == []
+        assert response.status_code == 403

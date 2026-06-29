@@ -25,6 +25,8 @@ services:
         value: ".onrender.com"
       - key: PYTHON_VERSION
         value: "3.12"
+      - key: ROUTE_API_KEY
+        sync: false
 
   # Daily ingest: runs at 06:00 UTC (~1–2 am NYC) before dispatchers start.
   # Commands run in dependency order; a failure in any step halts the chain.

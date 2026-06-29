@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
+from api.permissions import HasRouteApiKey
 from api.serializers import (
     BuildingRiskScoreSerializer,
     BuildingUpdateSerializer,
@@ -310,6 +311,8 @@ class ProvidersView(ListAPIView[DFTAProvider]):
 
 
 class RouteCreateView(APIView):
+    permission_classes = [HasRouteApiKey]
+
     def post(self, request: Request) -> Response:
         serializer = RouteCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -331,6 +334,7 @@ class RouteCreateView(APIView):
 
 
 class RouteDetailView(RetrieveAPIView[Route]):
+    permission_classes = [HasRouteApiKey]
     queryset = Route.objects.prefetch_related("stops")
     serializer_class = RouteSerializer
 
