@@ -4,7 +4,7 @@ import datetime
 
 import pytest
 from django.db import connection
-from django.test import Client
+from django.test import Client, override_settings
 
 from tests.factories import BuildingRiskScoreFactory, ElevatorComplaintFactory
 from tests.helpers import _set_location
@@ -25,6 +25,7 @@ class TestDashboardSummaryView:
     def test_returns_200_on_empty_db(self) -> None:
         resp = Client().get("/api/dashboard/summary/")
         assert resp.status_code == 200
+        assert resp.json()["atRiskStopsError"] is False
 
     def test_active_outages_count(self) -> None:
         ElevatorComplaintFactory(status="ACTIVE")
@@ -206,3 +207,26 @@ class TestDashboardSummaryView:
         )
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["atRiskStops"] == 0
+
+    @override_settings(DEBUG=False)
+    def test_at_risk_stops_error_field_on_db_failure(self) -> None:
+        today = datetime.date.today()
+        from api.models import Route, RouteStop
+
+        route = Route.objects.create(name="Error Test Route", date=today)
+        RouteStop.objects.create(
+            route=route, address="Error Test Stop", lat=40.758, lon=-73.985, order=0
+        )
+        # Rename a column that BATCH_PROXIMITY_SQL selects but earlier dashboard
+        # queries do not, so only _batch_nearby_outages fails. Postgres DDL is
+        # transactional — the rename rolls back with the test.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "ALTER TABLE elevator_complaints"
+                " RENAME COLUMN complaint_number TO complaint_number_hidden"
+            )
+        resp = Client().get("/api/dashboard/summary/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["atRiskStops"] == 0
+        assert data["atRiskStopsError"] is True

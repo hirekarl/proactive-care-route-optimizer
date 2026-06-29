@@ -30,6 +30,10 @@ rows via `_batch_nearby_outages()` and returns the count of stops with
 ≥1 active nearby outage. Will be 0 when no routes have been submitted
 for today, which is expected until a daily route-import flow exists.
 
+**Note:** The response always includes `atRiskStopsError: bool`. When `true`, the
+proximity scan failed (logged server-side) and `atRiskStops` soft-degrades to `0`.
+The frontend should distinguish this from a genuine zero.
+
 ---
 
 ## 4. `DashboardSummary.providersAffected` — always `0`
