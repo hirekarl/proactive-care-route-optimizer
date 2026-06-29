@@ -938,3 +938,70 @@ def test_providers_endpoint_returns_seniors_served_stub() -> None:
     resp = client.get("/api/providers/")
     assert resp.status_code == 200
     assert any(p.get("seniorsServed") == 0 for p in resp.json())
+
+
+class TestHeatFlagCbs:
+    """Unit tests for Command._heat_flag_cbs; no database required."""
+
+    def test_summer_ratio_determines_top_tercile(self) -> None:
+        """CBs with higher summer complaint ratio land in the top tercile."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+        winter = today.replace(month=1, day=1)
+
+        # CB "101": 2 summer, 1 winter → ratio 0.667
+        # CB "201": 0 summer, 2 winter → ratio 0.0
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", "101", "101", "201", "201"],
+                "date_entered": pd.to_datetime([summer, summer, winter, winter, winter]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        assert "101" in result
+        assert "201" not in result
+
+    def test_empty_community_board_excluded(self) -> None:
+        """Rows with empty community_board are dropped before ratio computation."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", ""],
+                "date_entered": pd.to_datetime([summer, summer]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        assert "" not in result
+
+    def test_uses_subset_index_correctly(self) -> None:
+        """is_summer is derived from c (filtered subset), not complaints (full DataFrame)."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+        winter = today.replace(month=1, day=1)
+
+        # Row at index 1 is filtered out (empty CB). Row at index 0 is summer,
+        # row at index 2 is winter. With the fixed code c["date_entered"] gives
+        # is_summer for only the retained rows (0=True, 2=False).
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", "", "101"],
+                "date_entered": pd.to_datetime([summer, summer, winter]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        # CB "101" has ratio = 1/2 = 0.5; only one CB so it's at/above the tercile threshold.
+        assert "101" in result

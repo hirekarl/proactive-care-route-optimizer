@@ -9,10 +9,10 @@ from django.db import connection, transaction
 from scipy import stats
 
 from api.models import BuildingRiskScore
+from api.utils import OUTAGE_RADIUS_M
 
 ANALYSIS_YEARS = 3
 HEAT_THRESHOLD_F = 90.0
-PROXIMITY_M = 804.67  # 0.5 miles
 MIN_COMPLAINTS_FOR_R = 8
 HEAT_TERCILE = 0.67
 
@@ -168,13 +168,13 @@ class Command(BaseCommand):
         from api.models import DFTAProvider, DFTASeniorCenter
 
         if DFTAProvider.objects.exists():
-            bins_near_providers = _bins_near_table("dfta_providers", PROXIMITY_M)
+            bins_near_providers = _bins_near_table("dfta_providers", OUTAGE_RADIUS_M)
             self.stdout.write(f"  {len(bins_near_providers)} buildings near a DFTA provider.")
         else:
             self.stdout.write(self.style.WARNING("  No DFTA providers — run ingest_dfta first."))
 
         if DFTASeniorCenter.objects.exists():
-            bins_near_centers = _bins_near_table("dfta_senior_centers", PROXIMITY_M)
+            bins_near_centers = _bins_near_table("dfta_senior_centers", OUTAGE_RADIUS_M)
             self.stdout.write(f"  {len(bins_near_centers)} buildings near a senior center.")
         else:
             self.stdout.write(self.style.WARNING("  No senior centers — run ingest_dfta first."))
@@ -308,7 +308,7 @@ class Command(BaseCommand):
         # community_board is a 3-digit string; first digit encodes borough
         c = complaints.dropna(subset=["community_board"]).copy()
         c = c[c["community_board"] != ""]
-        c["is_summer"] = complaints["date_entered"].dt.month.isin([6, 7, 8])
+        c["is_summer"] = c["date_entered"].dt.month.isin([6, 7, 8])
         total = c.groupby("community_board").size()
         summer = c[c["is_summer"]].groupby("community_board").size()
         ratio = (summer / total).fillna(0)

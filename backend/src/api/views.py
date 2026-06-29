@@ -20,8 +20,7 @@ from api.serializers import (
     RouteCreateSerializer,
     RouteSerializer,
 )
-
-ALERT_RADIUS_M = 804.67  # 0.5 miles in metres
+from api.utils import OUTAGE_RADIUS_M as ALERT_RADIUS_M
 
 BOROUGH_BY_CODE = {
     "1": "Manhattan",

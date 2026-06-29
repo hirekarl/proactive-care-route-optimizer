@@ -6,6 +6,7 @@ from django.db import connection, transaction
 
 from api.geocoding import geocode_address
 from api.models import ElevatorComplaint
+from api.utils import _chunks
 
 COMPLAINTS_URL = "https://data.cityofnewyork.us/resource/kqwi-7ncn.json"
 DEVICES_URL = "https://data.cityofnewyork.us/resource/e5aq-a4j2.json"
@@ -20,10 +21,6 @@ def _parse_dob_date(raw: str) -> datetime.date | None:
         return datetime.datetime.strptime(raw, "%m/%d/%Y").date()
     except (ValueError, TypeError):
         return None
-
-
-def _chunks(items: list[str], size: int) -> list[list[str]]:
-    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 class Command(BaseCommand):
@@ -42,6 +39,7 @@ class Command(BaseCommand):
         coords = self._resolve_coords(bins, headers)
         self.stdout.write(f"  {len(coords)} BINs resolved via device registry.")
 
+        all_incoming = {r.get("complaint_number") for r in rows if r.get("complaint_number")}
         existing_active = set(
             ElevatorComplaint.objects.filter(status="ACTIVE").values_list(
                 "complaint_number", flat=True
@@ -87,7 +85,7 @@ class Command(BaseCommand):
                     },
                 )
 
-            stale = existing_active - incoming_numbers
+            stale = existing_active - all_incoming
             if stale:
                 ElevatorComplaint.objects.filter(complaint_number__in=stale).update(status="CLOSED")
                 self.stdout.write(f"  {len(stale)} complaints marked CLOSED.")

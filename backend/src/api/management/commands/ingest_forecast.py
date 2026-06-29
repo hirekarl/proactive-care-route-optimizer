@@ -38,8 +38,9 @@ class Command(BaseCommand):
         temps = raw["daily"]["temperature_2m_max"]
 
         rows = [
-            WeatherForecast(date=d, temp_max_f=t if t is not None else 0.0)
+            WeatherForecast(date=d, temp_max_f=t)
             for d, t in zip(dates, temps, strict=True)
+            if t is not None
         ]
 
         with transaction.atomic():
