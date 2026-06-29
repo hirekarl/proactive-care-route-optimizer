@@ -10,7 +10,7 @@ import { Elevator3D } from "./Elevator3D";
 import { CARD_ORBIT_POSITIONS } from "./cardOrbit";
 import { landingScrollState } from "./landingScrollState";
 
-const PAGES = 7;
+const PAGES = 8;
 
 export function LandingScene() {
   return (
@@ -19,14 +19,15 @@ export function LandingScene() {
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       style={{ position: "absolute", inset: 0 }}
     >
-      <color attach="background" args={["#020617"]} />
-      <fog attach="fog" args={["#020617", 14, 44]} />
+      <color attach="background" args={["#06030f"]} />
+      <fog attach="fog" args={["#06030f", 14, 50]} />
 
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[6, 10, 4]} intensity={1.0} />
-      <pointLight position={[0, 0, 6]} intensity={2.2} color="#38bdf8" />
-      <pointLight position={[3, 6, -2]} intensity={1.4} color="#a78bfa" />
-      <pointLight position={[-3, -6, 2]} intensity={1.2} color="#f472b6" />
+      <ambientLight intensity={0.35} />
+      <directionalLight position={[6, 12, 4]} intensity={0.7} color="#f5f0ff" />
+      <pointLight position={[-8, 4, -2]} intensity={3.0} color="#7c3aed" />
+      <pointLight position={[8, 6, 2]} intensity={2.2} color="#a78bfa" />
+      <pointLight position={[0, -2, 8]} intensity={1.4} color="#c4b5fd" />
+      <pointLight position={[0, 9, 0]} intensity={1.6} color="#e9d5ff" />
 
       <ScrollControls pages={PAGES} damping={0.22}>
         <ScrollableScene />
@@ -40,12 +41,14 @@ function ScrollableScene() {
   const cameraRef = useRef<PerspectiveCameraImpl>(null);
   const camPos = useMemo(() => new Vector3(), []);
   const lookTarget = useMemo(() => new Vector3(), []);
+  const cardVecs = useMemo(() => CARD_ORBIT_POSITIONS.map(([x, y, z]) => new Vector3(x, y, z)), []);
+  const keys = useMemo(() => buildKeyframes(cardVecs), [cardVecs]);
 
   useFrame(() => {
     const offset = scroll.offset;
     landingScrollState.offset = offset;
     if (!cameraRef.current) return;
-    cameraPath(offset, camPos, lookTarget);
+    sampleKeys(keys, offset, camPos, lookTarget);
     cameraRef.current.position.copy(camPos);
     cameraRef.current.lookAt(lookTarget);
   });
@@ -55,49 +58,57 @@ function ScrollableScene() {
       <PerspectiveCamera
         ref={cameraRef}
         makeDefault
-        fov={52}
-        position={[0, -6, 4]}
+        fov={48}
+        position={[0, 9, 5]}
         near={0.1}
-        far={120}
+        far={140}
       />
 
       <Elevator3D />
 
-      <Sparkles count={180} size={3} scale={[10, 14, 10]} speed={0.4} color="#7dd3fc" />
-      <Sparkles count={90} size={5} scale={[6, 10, 6]} speed={0.6} color="#fbcfe8" opacity={0.7} />
-      <Sparkles count={60} size={8} scale={[4, 8, 4]} speed={0.3} color="#fde68a" opacity={0.4} />
+      <Sparkles count={160} size={3} scale={[14, 18, 14]} speed={0.4} color="#c4b5fd" />
+      <Sparkles count={80} size={5} scale={[8, 12, 8]} speed={0.6} color="#f0abfc" opacity={0.7} />
+      <Sparkles count={50} size={8} scale={[5, 9, 5]} speed={0.3} color="#fde68a" opacity={0.35} />
 
-      <CardPositionSyncer />
+      <CardPositionSyncer cardVecs={cardVecs} />
     </>
   );
 }
 
-function CardPositionSyncer() {
+interface SyncerProps {
+  cardVecs: Vector3[];
+}
+
+function CardPositionSyncer({ cardVecs }: SyncerProps) {
   const { camera, size } = useThree();
-  const orbitVecs = useMemo(
-    () => CARD_ORBIT_POSITIONS.map(([x, y, z]) => new Vector3(x, y, z)),
-    []
-  );
   const tmp = useMemo(() => new Vector3(), []);
   const cameraPos = useMemo(() => new Vector3(), []);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     cameraPos.copy(camera.position);
-    landingScrollState.cards = orbitVecs.map((basePos, idx) => {
+    landingScrollState.cards = cardVecs.map((basePos, idx) => {
       tmp.set(basePos.x, basePos.y + Math.sin(t * 0.5 + idx) * 0.18, basePos.z);
       const distFromCamera = tmp.distanceTo(cameraPos);
       tmp.project(camera);
-      const visible = tmp.z < 1 && tmp.z > -1;
+      const inFrustum = tmp.z < 1 && tmp.z > -1;
       const x = (tmp.x * 0.5 + 0.5) * size.width;
       const y = (-tmp.y * 0.5 + 0.5) * size.height;
-      const near = 3;
+      const near = 2.5;
       const far = 16;
       const depthNorm = Math.max(0, Math.min(1, (distFromCamera - near) / (far - near)));
-      const scale = lerp(1.15, 0.5, depthNorm);
-      const opacity = visible ? lerp(1, 0.25, depthNorm) : 0;
-      const zIndex = Math.round(1500 - distFromCamera * 20);
-      return { x, y, scale, opacity, visible, depth: distFromCamera, zIndex };
+      const scale = lerp(1.35, 0.45, depthNorm);
+      const opacity = inFrustum ? lerp(1, 0.2, depthNorm) : 0;
+      const zIndex = Math.round(1500 - distFromCamera * 25);
+      return {
+        x,
+        y,
+        scale,
+        opacity,
+        visible: inFrustum,
+        depth: distFromCamera,
+        zIndex,
+      };
     });
   });
 
@@ -110,27 +121,52 @@ interface CamKey {
   look: [number, number, number];
 }
 
-const CAMERA_KEYS: CamKey[] = [
-  { t: 0.0, pos: [0.6, -6.5, 3.2], look: [0, 4.5, 0] },
-  { t: 0.08, pos: [1.6, -4.5, 5.5], look: [0, 3.2, 0] },
-  { t: 0.18, pos: [4.5, -1.8, 6.2], look: [0, 0.8, 0] },
-  { t: 0.28, pos: [7.5, 0.6, 3.5], look: [0, 0.2, 0] },
-  { t: 0.4, pos: [6.0, 1.8, -4.5], look: [0, 0.2, 0] },
-  { t: 0.5, pos: [0, 3.2, -8.5], look: [0, 0.4, 0] },
-  { t: 0.6, pos: [-5.8, 2.0, -4.8], look: [0, 0.2, 0] },
-  { t: 0.7, pos: [-7.3, 0.5, 3.6], look: [0, 0.2, 0] },
-  { t: 0.82, pos: [-2.4, -0.6, 8.6], look: [0, -0.4, 0] },
-  { t: 0.92, pos: [0, -1.5, 6.4], look: [0, -1.4, 0] },
-  { t: 1.0, pos: [0, -3.8, 6.0], look: [0, -3.6, 0] },
-];
+function buildKeyframes(cards: Vector3[]): CamKey[] {
+  const keys: CamKey[] = [];
 
-function cameraPath(t: number, outPos: Vector3, outLook: Vector3): void {
-  const keys = CAMERA_KEYS;
+  keys.push({ t: 0.0, pos: [0, 9.0, 4.5], look: [0, 5.5, 0] });
+  keys.push({ t: 0.05, pos: [1.6, 7.5, 5.5], look: [0, 4.8, 0] });
+
+  const N = cards.length;
+  const startT = 0.05;
+  const endT = 0.86;
+  const totalSpan = endT - startT;
+
+  for (let i = 0; i < N; i += 1) {
+    const tZoom = startT + totalSpan * ((i + 0.5) / N);
+    const tCrawl = startT + totalSpan * ((i + 1) / N);
+    const c = cards[i];
+    const r = Math.hypot(c.x, c.z);
+    const zoomScale = (r + 2.0) / Math.max(r, 0.001);
+    const camZoom: [number, number, number] = [c.x * zoomScale, c.y + 0.35, c.z * zoomScale];
+    keys.push({ t: tZoom, pos: camZoom, look: [c.x, c.y, c.z] });
+
+    if (i < N - 1) {
+      const next = cards[i + 1];
+      const midX = (c.x + next.x) / 2;
+      const midZ = (c.z + next.z) / 2;
+      const midY = (c.y + next.y) / 2;
+      const midR = Math.hypot(midX, midZ);
+      const crawlScale = (midR + 6.5) / Math.max(midR, 0.001);
+      const crawlPos: [number, number, number] = [midX * crawlScale, midY + 1.0, midZ * crawlScale];
+      keys.push({ t: tCrawl, pos: crawlPos, look: [0, midY, 0] });
+    }
+  }
+
+  keys.push({ t: 0.93, pos: [0.6, -5.0, 3.5], look: [0, 3.0, 0] });
+  keys.push({ t: 1.0, pos: [0.6, -6.5, 3.2], look: [0, 4.5, 0] });
+
+  keys.sort((a, b) => a.t - b.t);
+  return keys;
+}
+
+function sampleKeys(keys: CamKey[], t: number, outPos: Vector3, outLook: Vector3): void {
   let i = 0;
   while (i < keys.length - 2 && keys[i + 1].t < t) i += 1;
   const k0 = keys[i];
   const k1 = keys[i + 1];
-  const segT = (t - k0.t) / (k1.t - k0.t);
+  const range = Math.max(k1.t - k0.t, 1e-6);
+  const segT = (t - k0.t) / range;
   const e = smoothstep(Math.max(0, Math.min(1, segT)));
   outPos.set(
     lerp(k0.pos[0], k1.pos[0], e),
