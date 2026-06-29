@@ -87,3 +87,10 @@ def test_outages_proximity_excludes_closed(client: Client) -> None:
 def test_outages_only_one_param_returns_400(client: Client) -> None:
     response = client.get("/api/outages/?lat=40.7580")
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_outages_invalid_lat_lon_returns_400(client: Client) -> None:
+    response = client.get("/api/outages/?lat=notanumber&lon=0")
+    assert response.status_code == 400
+    assert "must be valid floats" in response.json()["detail"]

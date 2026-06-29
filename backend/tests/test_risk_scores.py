@@ -2,6 +2,7 @@
 
 import datetime
 import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -253,6 +254,15 @@ class TestComputeRiskScoresCommand:
         # With enough data, heat_ratio should be populated
         assert score.n_complaints_analyzed > 0
 
+    def test_empty_database_exits_early(self) -> None:
+        """compute_risk_scores with no complaint rows should warn and return cleanly."""
+        from django.core.management import call_command
+
+        from api.models import BuildingRiskScore
+
+        call_command("compute_risk_scores", verbosity=0)
+        assert BuildingRiskScore.objects.count() == 0
+
 
 @pytest.mark.django_db
 class TestBuildingAPI:
@@ -321,6 +331,46 @@ class TestBuildingAPI:
         client = Client()
         resp = client.get("/api/buildings/DOES-NOT-EXIST/")
         assert resp.status_code == 404
+
+    def test_list_filter_invalid_min_score_is_ignored(self) -> None:
+        """A non-integer min_score param is silently ignored — all buildings returned."""
+        client = Client()
+        self._seed_building("B-BADSCORE-001")
+        resp = client.get("/api/buildings/?min_score=notanint")
+        assert resp.status_code == 200
+        assert any(b["bin"] == "B-BADSCORE-001" for b in resp.json())
+
+    def test_list_filter_borough(self) -> None:
+        """?borough=1 returns only buildings whose community_board starts with '1'."""
+        from api.models import BuildingRiskScore
+
+        client = Client()
+        self._seed_building("B-BORO-MAN")  # default community_board = "101" (Manhattan)
+        BuildingRiskScore.objects.update_or_create(
+            bin="B-BORO-BX",
+            defaults={
+                "house_number": "100",
+                "house_street": "Grand Concourse",
+                "zip_code": "10451",
+                "community_board": "201",  # Bronx
+                "lat": 40.858,
+                "lon": -73.925,
+                "complaints_1yr": 1,
+                "complaints_3yr": 3,
+                "is_chronic": True,
+                "vulnerability_score": 2,
+                "score_provider": 1,
+                "score_center": 1,
+                "score_heat_cb": 0,
+                "n_complaints_analyzed": 3,
+                "confidence": "medium",
+            },
+        )
+        resp = client.get("/api/buildings/?borough=1")
+        assert resp.status_code == 200
+        bins = [b["bin"] for b in resp.json()]
+        assert "B-BORO-MAN" in bins
+        assert "B-BORO-BX" not in bins
 
 
 @pytest.mark.django_db
@@ -537,6 +587,86 @@ class TestIngestDFTA:
         assert DFTAProvider.objects.filter(provider_id="P-NEW").exists()
         assert not DFTAProvider.objects.filter(provider_id="P-OLD").exists()
 
+    def test_ingest_center_skips_row_with_no_id(self) -> None:
+        """Center row with no facilityid, bin, or objectid is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTASeniorCenter
+
+        bad_row = {"name": "No ID Center", "latitude": "40.758", "longitude": "-73.985"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = [bad_row] if "ygfr-ij6t" in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            call_command("ingest_dfta", verbosity=0)
+
+        assert DFTASeniorCenter.objects.count() == 0
+
+    def test_ingest_center_skips_row_when_geocoding_fails(self) -> None:
+        """Center row with no coordinates and a failing geocoder is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTASeniorCenter
+
+        bad_row = {"facilityid": "SC-NO-COORDS", "name": "No Coords Center"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = [bad_row] if "ygfr-ij6t" in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            with patch("api.management.commands.ingest_dfta.geocode_address", return_value=None):
+                call_command("ingest_dfta", verbosity=0)
+
+        assert not DFTASeniorCenter.objects.filter(center_id="SC-NO-COORDS").exists()
+
+    def test_ingest_provider_skips_row_when_geocoding_fails(self) -> None:
+        """Provider row with no coordinates and a failing geocoder is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTAProvider
+
+        bad_row = {"contractid": "P-NO-COORDS", "provider_name": "No Coords Provider"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = [bad_row] if "test-ds" in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            with patch("api.management.commands.ingest_dfta.geocode_address", return_value=None):
+                call_command("ingest_dfta", provider_dataset="test-ds", verbosity=0)
+
+        assert not DFTAProvider.objects.filter(provider_id="P-NO-COORDS").exists()
+
+    def test_coords_from_row_falls_back_to_geocoding_on_bad_float(self) -> None:
+        """_coords_from_row with non-parseable lat/lon strings geocodes the address instead."""
+        from api.management.commands.ingest_dfta import Command
+
+        with patch(
+            "api.management.commands.ingest_dfta.geocode_address",
+            return_value=(-73.985, 40.758),
+        ) as mock_geo:
+            result = Command()._coords_from_row(
+                {
+                    "latitude": "bad",
+                    "longitude": "worse",
+                    "address": "123 Main St",
+                    "borough": "Bronx",
+                },
+                {},
+            )
+
+        assert result == (-73.985, 40.758)
+        mock_geo.assert_called_once()
+
 
 @pytest.mark.django_db
 class TestBuildingOverride:
@@ -716,3 +846,69 @@ class TestBuildingOverride:
         resp = client.get("/api/outages/")
         item = next(o for o in resp.json() if o["bin"] == "B-OVR-008")
         assert item["singleElevator"] is True  # DOB value restored
+
+
+class TestScoreBuildingHeat:
+    """Unit tests for _score_building_heat; no database required."""
+
+    def _weeks(self, data: list[tuple[str, float, bool]]) -> Any:
+        import pandas as pd
+
+        dates, temps, is_heat = zip(*data, strict=True)
+        return pd.DataFrame(
+            {
+                "week_start": pd.to_datetime(list(dates)),
+                "weekly_max_f": list(temps),
+                "is_heat_week": list(is_heat),
+            }
+        )
+
+    def _building(self, bin_id: str, data: list[tuple[str, float]]) -> Any:
+        import pandas as pd
+
+        dates, counts = zip(*data, strict=True)
+        return pd.DataFrame(
+            {
+                "bin": [bin_id] * len(dates),
+                "week_start": pd.to_datetime(list(dates)),
+                "n_complaints": list(counts),
+            }
+        )
+
+    def test_high_confidence(self) -> None:
+        """n_complaints_3yr >= 15 → confidence 'high'."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        weeks = self._weeks([("2024-01-01", 85.0, False), ("2024-01-08", 85.0, False)])
+        building_c = self._building("BIN-H", [("2024-01-01", 8.0), ("2024-01-08", 7.0)])
+        result = _score_building_heat("BIN-H", building_c, weeks, n_complaints_3yr=15)
+        assert result["confidence"] == "high"
+
+    def test_low_confidence(self) -> None:
+        """n_complaints_3yr < 5 → confidence 'low'."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        weeks = self._weeks([("2024-01-01", 85.0, False)])
+        building_c = self._building("BIN-L", [("2024-01-01", 1.0)])
+        result = _score_building_heat("BIN-L", building_c, weeks, n_complaints_3yr=3)
+        assert result["confidence"] == "low"
+
+    def test_heat_ratio_none_when_no_nonheat_complaints(self) -> None:
+        """heat_rate > 0, nonheat_rate == 0 → heat_ratio is None."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        # Only a heat week; non-heat week exists but has zero complaints → nonheat_rate = 0
+        weeks = self._weeks([("2024-07-01", 95.0, True), ("2024-01-01", 50.0, False)])
+        building_c = self._building("BIN-R", [("2024-07-01", 1.0)])
+        result = _score_building_heat("BIN-R", building_c, weeks, n_complaints_3yr=3)
+        assert result["heat_ratio"] is None
+
+
+@pytest.mark.django_db
+def test_providers_endpoint_returns_seniors_served_stub() -> None:
+    """GET /api/providers/ includes seniors_served stubbed to 0."""
+    _insert_provider("PROV-STUB-001", 40.858, -73.925)
+    client = Client()
+    resp = client.get("/api/providers/")
+    assert resp.status_code == 200
+    assert any(p.get("seniorsServed") == 0 for p in resp.json())

@@ -1,7 +1,6 @@
 """Compute per-building composite vulnerability score and heat correlation metrics."""
 
 import datetime
-import math
 from typing import Any
 
 import pandas as pd
@@ -15,21 +14,7 @@ ANALYSIS_YEARS = 3
 HEAT_THRESHOLD_F = 90.0
 PROXIMITY_M = 804.67  # 0.5 miles
 MIN_COMPLAINTS_FOR_R = 8
-EARTH_RADIUS_MILES = 3958.8
 HEAT_TERCILE = 0.67
-
-
-# ---------------------------------------------------------------------------
-# Haversine distance
-# ---------------------------------------------------------------------------
-
-
-def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return EARTH_RADIUS_MILES * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # ---------------------------------------------------------------------------
