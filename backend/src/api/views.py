@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import DatabaseError, connection
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework.exceptions import ParseError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -39,7 +40,6 @@ BOROUGH_BY_CODE = {
 
 _HEAT_RISK_MULTIPLIER_FALLBACK = 1.20  # EDA baseline; used when no scored buildings exist yet
 
-# Single source for the effective-single-elevator expression used in all proximity queries.
 # DashboardSummaryView's inline SQL omits the brs alias and is kept separately.
 _EFFECTIVE_SINGLE_ELEVATOR_SQL = (
     "CASE WHEN brs.elevator_count_override IS NOT NULL"
@@ -97,12 +97,11 @@ NEARBY_OUTAGES_SQL = f"""
     ORDER BY distance_m ASC
 """
 
-# Each (stop_id, complaint_number) pair is unique — complaints are at fixed locations,
-# so a given complaint is either within range of a stop or it isn't.
+# Each (stop_id, complaint_number) pair is unique — a complaint's location is fixed.
 BATCH_PROXIMITY_SQL = f"""
     WITH stop_points AS (
         SELECT
-            UNNEST(%s::int[])    AS stop_id,
+            UNNEST(%s::bigint[]) AS stop_id,
             UNNEST(%s::float8[]) AS slon,
             UNNEST(%s::float8[]) AS slat
     )
@@ -207,13 +206,13 @@ def _enrich_alerts_in_place(
             )
 
 
-def _parse_date_param(request: Request) -> datetime.date | Response:
+def _parse_date_param(request: Request) -> datetime.date:
     date_str = request.query_params.get("date")
     if date_str:
         try:
             return datetime.date.fromisoformat(date_str)
         except ValueError:
-            return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
+            raise ParseError("date must be ISO format (YYYY-MM-DD).") from None
     return timezone.localdate()
 
 
@@ -361,16 +360,19 @@ class DashboardSummaryView(APIView):
         try:
             today_stops = list(RouteStop.objects.filter(route__date=timezone.localdate()))
             at_risk_stops = len(_batch_nearby_outages(today_stops))
+            at_risk_stops_error = False
         except DatabaseError:
             logger.exception("at_risk_stops proximity scan failed")
             if settings.DEBUG:
                 raise
             at_risk_stops = 0
+            at_risk_stops_error = True
 
         return Response(
             {
                 "active_outages": active_outages,
                 "at_risk_stops": at_risk_stops,
+                "at_risk_stops_error": at_risk_stops_error,
                 "providers_affected": 0,  # stub — no provider–stop link in current data
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
@@ -434,10 +436,7 @@ class RouteStopsView(APIView):
     permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_result = _parse_date_param(request)
-        if isinstance(date_result, Response):
-            return date_result
-        target_date = date_result
+        target_date = _parse_date_param(request)
 
         stops = (
             RouteStop.objects.select_related("route")
@@ -456,10 +455,7 @@ class AlertsAtRiskView(APIView):
     permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_result = _parse_date_param(request)
-        if isinstance(date_result, Response):
-            return date_result
-        target_date = date_result
+        target_date = _parse_date_param(request)
 
         stops = list(
             RouteStop.objects.select_related("route")
@@ -467,7 +463,11 @@ class AlertsAtRiskView(APIView):
             .order_by("route__id", "order")
         )
         is_heat_week = get_is_heat_week()
-        alerts_by_stop_id = _batch_nearby_outages(stops)
+        try:
+            alerts_by_stop_id = _batch_nearby_outages(stops)
+        except DatabaseError:
+            logger.exception("at-risk proximity scan failed")
+            return Response({"detail": "Proximity scan unavailable."}, status=503)
         _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
 
         results = []

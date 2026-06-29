@@ -6,46 +6,8 @@ import pytest
 from django.db import connection
 from django.test import Client
 
-from tests.factories import ElevatorComplaintFactory
+from tests.factories import BuildingRiskScoreFactory, ElevatorComplaintFactory
 from tests.helpers import _set_location
-
-
-def _seed_building(
-    bin_id: str,
-    *,
-    is_chronic: bool = True,
-    is_single_elevator: bool | None = None,
-    heat_ratio: float | None = None,
-    confidence: str = "low",
-    community_board: str = "101",
-) -> None:
-    from api.models import BuildingRiskScore
-
-    BuildingRiskScore.objects.update_or_create(
-        bin=bin_id,
-        defaults={
-            "house_number": "100",
-            "house_street": "Test St",
-            "zip_code": "10001",
-            "community_board": community_board,
-            "lat": 40.758,
-            "lon": -73.985,
-            "complaints_1yr": 1,
-            "complaints_3yr": 3,
-            "is_chronic": is_chronic,
-            "vulnerability_score": 1,
-            "score_provider": 0,
-            "score_center": 1,
-            "score_heat_cb": 0,
-            "heat_ratio": heat_ratio,
-            "pearson_r": None,
-            "pearson_p": None,
-            "n_complaints_analyzed": 3,
-            "confidence": confidence,
-            "is_single_elevator": is_single_elevator,
-            "elevator_count_override": None,
-        },
-    )
 
 
 def _seed_forecast(days: list[tuple[str, float]]) -> None:
@@ -72,15 +34,15 @@ class TestDashboardSummaryView:
         assert resp.json()["activeOutages"] == 2
 
     def test_chronic_offenders_count(self) -> None:
-        _seed_building("D-CHR-1", is_chronic=True)
-        _seed_building("D-CHR-2", is_chronic=False)
+        BuildingRiskScoreFactory(bin="D-CHR-1", is_chronic=True)
+        BuildingRiskScoreFactory(bin="D-CHR-2", is_chronic=False)
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["chronicOffenders"] == 1
 
     def test_single_elevator_buildings_count(self) -> None:
-        _seed_building("D-SE-1", is_single_elevator=True)
-        _seed_building("D-SE-2", is_single_elevator=False)
-        _seed_building("D-SE-3", is_single_elevator=None)
+        BuildingRiskScoreFactory(bin="D-SE-1", is_single_elevator=True)
+        BuildingRiskScoreFactory(bin="D-SE-2", is_single_elevator=False)
+        BuildingRiskScoreFactory(bin="D-SE-3")
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["singleElevatorBuildings"] == 1
 
@@ -118,10 +80,12 @@ class TestDashboardSummaryView:
         assert resp.json()["heatRiskMultiplier"] == 1.20
 
     def test_heat_risk_multiplier_uses_live_avg_of_high_medium_confidence(self) -> None:
-        _seed_building("D-HR-1", is_chronic=True, heat_ratio=1.50, confidence="high")
-        _seed_building("D-HR-2", is_chronic=True, heat_ratio=1.30, confidence="medium")
+        BuildingRiskScoreFactory(bin="D-HR-1", is_chronic=True, heat_ratio=1.50, confidence="high")
+        BuildingRiskScoreFactory(
+            bin="D-HR-2", is_chronic=True, heat_ratio=1.30, confidence="medium"
+        )
         # low confidence is excluded from the AVG
-        _seed_building("D-HR-3", is_chronic=True, heat_ratio=2.00, confidence="low")
+        BuildingRiskScoreFactory(bin="D-HR-3", is_chronic=True, heat_ratio=2.00)
         resp = Client().get("/api/dashboard/summary/")
         assert abs(resp.json()["heatRiskMultiplier"] - 1.40) < 0.001
 
@@ -137,7 +101,7 @@ class TestDashboardSummaryView:
 
     def test_borough_breakdown_chronic_count(self) -> None:
         ElevatorComplaintFactory(status="ACTIVE", bin="BBOROUGH-1", community_board="301")
-        _seed_building("BBOROUGH-1", is_chronic=True, community_board="301")
+        BuildingRiskScoreFactory(bin="BBOROUGH-1", is_chronic=True, community_board="301")
         resp = Client().get("/api/dashboard/summary/")
         brooklyn = next(
             (b for b in resp.json()["boroughBreakdown"] if b["borough"] == "Brooklyn"), None

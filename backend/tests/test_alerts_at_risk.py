@@ -4,42 +4,12 @@ from typing import Any
 import pytest
 from django.test import Client
 
-from api.models import BuildingRiskScore, Route, RouteStop
-from tests.factories import ElevatorComplaintFactory
+from api.models import Route, RouteStop
+from tests.factories import BuildingRiskScoreFactory, ElevatorComplaintFactory
 from tests.helpers import _set_location
 
 TEST_API_KEY = "dispatcher-test-key"
 AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {TEST_API_KEY}"}
-
-
-def _seed_building(
-    bin_id: str, *, is_chronic: bool = False, is_single_elevator: bool | None = None
-) -> None:
-    BuildingRiskScore.objects.update_or_create(
-        bin=bin_id,
-        defaults={
-            "house_number": "100",
-            "house_street": "Test St",
-            "zip_code": "10001",
-            "community_board": "101",
-            "lat": 40.758,
-            "lon": -73.985,
-            "complaints_1yr": 1,
-            "complaints_3yr": 3,
-            "is_chronic": is_chronic,
-            "vulnerability_score": 1,
-            "score_provider": 0,
-            "score_center": 0,
-            "score_heat_cb": 0,
-            "heat_ratio": None,
-            "pearson_r": None,
-            "pearson_p": None,
-            "n_complaints_analyzed": 1,
-            "confidence": "low",
-            "is_single_elevator": is_single_elevator,
-            "elevator_count_override": None,
-        },
-    )
 
 
 @pytest.mark.django_db
@@ -86,7 +56,7 @@ class TestAlertsAtRisk:
     def test_highest_severity_critical_for_single_elevator(self) -> None:
         today = datetime.date.today()
         bin_id = "SINGLE-1"
-        _seed_building(bin_id, is_single_elevator=True)
+        BuildingRiskScoreFactory(bin=bin_id, is_single_elevator=True)
         complaint = ElevatorComplaintFactory(lat=40.7580, lon=-73.9855, bin=bin_id)
         _set_location(complaint.complaint_number, -73.9855, 40.7580)
 

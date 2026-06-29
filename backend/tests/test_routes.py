@@ -174,7 +174,6 @@ class TestRoutes:
         assert response.status_code == 403
 
     def test_route_detail_multiple_stops_batch_query(self) -> None:
-        """Complaint near stops A and C but not B; all three come back correctly."""
         client = Client()
         # complaint at Times Square
         complaint = ElevatorComplaintFactory(lat=40.7580, lon=-73.9855)
@@ -202,7 +201,6 @@ class TestRoutes:
         assert len(stop_c["outageAlerts"]) == 1
 
     def test_route_detail_stop_without_geocoords_skipped(self) -> None:
-        """Stops that failed geocoding (lat/lon None) return empty outageAlerts without error."""
         client = Client()
         route = Route.objects.create(name="No Coords", date="2026-06-27")
         RouteStop.objects.create(
