@@ -73,6 +73,33 @@ class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
         return value
 
 
+class RouteStopFlatSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
+    """Flat stop shape for GET /api/routes/stops/ — includes parent route fields."""
+
+    route_id = serializers.IntegerField(source="route.id")
+    route_name = serializers.CharField(source="route.name")
+    route_date = serializers.DateField(source="route.date")
+
+    class Meta:
+        model = RouteStop
+        fields = ["id", "route_id", "route_name", "route_date", "address", "lat", "lon", "order"]
+
+
+class AtRiskStopSerializer(serializers.Serializer):  # type: ignore[type-arg]
+    """Stop with proximity-matched outage alerts for GET /api/alerts/at-risk/."""
+
+    id = serializers.IntegerField()
+    route_id = serializers.IntegerField()
+    route_name = serializers.CharField()
+    route_date = serializers.DateField()
+    address = serializers.CharField()
+    lat = serializers.FloatField(allow_null=True)
+    lon = serializers.FloatField(allow_null=True)
+    order = serializers.IntegerField()
+    outage_alerts = OutageAlertSerializer(many=True)
+    highest_severity = serializers.CharField()
+
+
 class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
     class Meta:
         model = BuildingRiskScore

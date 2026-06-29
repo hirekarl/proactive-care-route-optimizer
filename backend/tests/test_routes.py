@@ -3,11 +3,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from django.db import connection
 from django.test import Client
 
 from api.models import Route, RouteStop
 from tests.factories import ElevatorComplaintFactory
+from tests.helpers import _set_location
 
 GEOSEARCH_RESPONSE = {
     "features": [
@@ -21,15 +21,6 @@ GEOSEARCH_RESPONSE = {
 
 TEST_API_KEY = "dispatcher-test-key"
 AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {TEST_API_KEY}"}
-
-
-def _set_location(complaint_number: str, lon: float, lat: float) -> None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-            " WHERE complaint_number = %s",
-            [lon, lat, complaint_number],
-        )
 
 
 @pytest.mark.django_db
@@ -181,3 +172,42 @@ class TestRoutes:
             HTTP_AUTHORIZATION="Api-Key wrong-key",
         )
         assert response.status_code == 403
+
+    def test_route_detail_multiple_stops_batch_query(self) -> None:
+        client = Client()
+        # complaint at Times Square
+        complaint = ElevatorComplaintFactory(lat=40.7580, lon=-73.9855)
+        _set_location(complaint.complaint_number, -73.9855, 40.7580)
+
+        route = Route.objects.create(name="Multi-Stop", date="2026-06-27")
+        # stop A: near complaint
+        RouteStop.objects.create(route=route, address="Stop A", lat=40.7580, lon=-73.9855, order=0)
+        # stop B: far away (Brooklyn)
+        RouteStop.objects.create(route=route, address="Stop B", lat=40.6501, lon=-73.9496, order=1)
+        # stop C: also near complaint
+        RouteStop.objects.create(route=route, address="Stop C", lat=40.7581, lon=-73.9856, order=2)
+
+        detail_response = client.get(f"/api/routes/{route.pk}/", **AUTH)
+        assert detail_response.status_code == 200
+        stops = detail_response.json()["stops"]
+        assert len(stops) == 3
+
+        stop_a = next(s for s in stops if s["address"] == "Stop A")
+        stop_b = next(s for s in stops if s["address"] == "Stop B")
+        stop_c = next(s for s in stops if s["address"] == "Stop C")
+
+        assert len(stop_a["outageAlerts"]) == 1
+        assert stop_b["outageAlerts"] == []
+        assert len(stop_c["outageAlerts"]) == 1
+
+    def test_route_detail_stop_without_geocoords_skipped(self) -> None:
+        client = Client()
+        route = Route.objects.create(name="No Coords", date="2026-06-27")
+        RouteStop.objects.create(
+            route=route, address="Unknown Address", lat=None, lon=None, order=0
+        )
+
+        detail_response = client.get(f"/api/routes/{route.pk}/", **AUTH)
+        assert detail_response.status_code == 200
+        stop = detail_response.json()["stops"][0]
+        assert stop["outageAlerts"] == []

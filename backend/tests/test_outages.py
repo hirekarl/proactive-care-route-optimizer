@@ -1,18 +1,8 @@
 import pytest
-from django.db import connection
 from django.test import Client
 
 from tests.factories import ElevatorComplaintFactory
-
-
-def _set_location(complaint_number: str, lon: float, lat: float) -> None:
-    """Populate the PostGIS location column (not managed by the ORM)."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-            " WHERE complaint_number = %s",
-            [lon, lat, complaint_number],
-        )
+from tests.helpers import _set_location
 
 
 @pytest.mark.django_db
