@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CARD_ORBIT_POSITIONS } from "./cardOrbit";
 import { landingFacts } from "./landingFacts";
 import { landingScrollState } from "./landingScrollState";
 
@@ -9,41 +10,11 @@ interface FactCardsOverlayProps {
   previewing?: boolean;
 }
 
-const CARD_PLACEMENTS = [
-  {
-    angle: 28,
-    compact: { left: 67, top: 29 },
-    desktop: { left: 73, top: 28 },
-    tiltX: -6,
-    tiltZ: 1,
-  },
-  {
-    angle: -72,
-    compact: { left: 33, top: 44 },
-    desktop: { left: 43, top: 36 },
-    tiltX: 4,
-    tiltZ: -2.5,
-  },
-  {
-    angle: 82,
-    compact: { left: 68, top: 58 },
-    desktop: { left: 74, top: 58 },
-    tiltX: 6,
-    tiltZ: 2,
-  },
-  {
-    angle: 168,
-    compact: { left: 50, top: 72 },
-    desktop: { left: 52, top: 72 },
-    tiltX: 10,
-    tiltZ: -1,
-  },
-];
-
 const START_T = 0.05;
 const END_T = 0.86;
 const FOCUS_RANGE = 0.12;
-const RAD_TO_DEG = 180 / Math.PI;
+const ORBIT_REVEAL_START = 0.035;
+const ORBIT_REVEAL_END = 0.09;
 
 export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsOverlayProps) {
   const [offset, setOffset] = useState(landingScrollState.offset);
@@ -81,41 +52,73 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
 
   const cards = useMemo(() => {
     const totalSpan = END_T - START_T;
-    const dragDegrees = dragRotation * RAD_TO_DEG;
+    const orbitReveal = Math.min(
+      1,
+      Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
+    );
+    const orbit = compact
+      ? { centerX: 50, centerY: 54, radiusX: 18, radiusY: 31, swayY: 4.4 }
+      : { centerX: 61, centerY: 53, radiusX: 24, radiusY: 30, swayY: 3.2 };
+    const yValues = CARD_ORBIT_POSITIONS.map(([, y]) => y);
+    const maxY = Math.max(...yValues);
+    const minY = Math.min(...yValues);
+    const yRange = Math.max(maxY - minY, 0.001);
 
     return landingFacts.map((fact, index) => {
       const tZoom = START_T + totalSpan * ((index + 0.5) / landingFacts.length);
       const delta = Math.abs(offset - tZoom);
       const focus = Math.max(0, 1 - delta / FOCUS_RANGE);
       const easedFocus = focus * focus * (3 - 2 * focus);
-      const surface = CARD_PLACEMENTS[index];
-      const placement = compact ? surface.compact : surface.desktop;
-      const angle = ((surface.angle + dragDegrees) * Math.PI) / 180;
+      const [x, y, z] = CARD_ORBIT_POSITIONS[index];
+      const angle = Math.atan2(z, x) + dragRotation - 0.26;
       const side = Math.sin(angle);
       const face = Math.cos(angle);
-      const driftX = side * (compact ? 5 : 3.6);
-      const driftY = Math.sin(angle * 0.7) * (compact ? 2.4 : 1.7);
+      const yNorm = ((y - minY) / yRange) * 2 - 1;
+      const orbitRotateY = -side * 62;
 
       return {
         depth: (face + 1) / 2,
         fact,
         focus: easedFocus,
+        orbitReveal,
         placement: {
-          left: placement.left + driftX,
-          top: placement.top + driftY,
+          left: orbit.centerX + Math.cos(angle) * orbit.radiusX,
+          top: orbit.centerY - yNorm * orbit.radiusY + Math.sin(angle) * orbit.swayY,
         },
-        rotateX: surface.tiltX + face * 6,
-        rotateY: -side * 48,
-        rotateZ: surface.tiltZ + side * 3,
+        rotateX: -yNorm * 7 + face * 3,
+        rotateY: orbitRotateY * (1 - easedFocus * 0.92),
+        rotateZ: side * 4 * (1 - easedFocus * 0.62),
       };
     });
   }, [compact, dragRotation, offset]);
 
+  const orbitReveal = Math.min(
+    1,
+    Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
+  );
+  const orbitPath = compact
+    ? { centerX: 50, centerY: 54, height: 62, width: 52 }
+    : { centerX: 61, centerY: 53, height: 60, width: 48 };
+
   return (
-    <div className="landing__cards" data-previewing={previewing}>
-      {cards.map(({ depth, fact, focus, placement, rotateX, rotateY, rotateZ }) => {
+    <div
+      className="landing__cards"
+      data-previewing={previewing}
+      style={
+        {
+          "--orbit-center-x": `${orbitPath.centerX}%`,
+          "--orbit-center-y": `${orbitPath.centerY}%`,
+          "--orbit-height": `${orbitPath.height}%`,
+          "--orbit-opacity": (orbitReveal * 0.62).toFixed(3),
+          "--orbit-width": `${orbitPath.width}%`,
+        } as CSSProperties
+      }
+    >
+      <div className="landing__orbit-path" aria-hidden="true" />
+      {cards.map(({ depth, fact, focus, orbitReveal, placement, rotateX, rotateY, rotateZ }) => {
         const active = focus > 0.42;
-        const cardOpacity = Math.min(0.98, Math.max(0.08, 0.06 + depth * 0.08 + focus * 0.86));
+        const cardOpacity =
+          orbitReveal * Math.min(0.98, Math.max(0.08, 0.05 + depth * 0.08 + focus * 0.86));
         const cardScale = 0.74 + focus * 0.28;
         const cardY = (1 - focus) * 14;
         const orbitDepth = Math.round(8 + depth * 4 + focus * 12);
@@ -126,7 +129,7 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
             className="landing__card glass-card group"
             type="button"
             data-active={active}
-            disabled={previewing || !active}
+            disabled={previewing || !active || orbitReveal < 0.95}
             aria-label={`Open ${fact.eyebrow} tab preview`}
             onClick={() => onSelectTab(fact.tabIndex)}
             style={

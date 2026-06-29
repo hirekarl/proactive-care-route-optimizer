@@ -7,6 +7,7 @@ import { FactCardsOverlay } from "../components/landing/FactCardsOverlay";
 import { LandingScene } from "../components/landing/LandingScene";
 import { landingFacts } from "../components/landing/landingFacts";
 import type { LandingFact } from "../components/landing/landingFacts";
+import { landingScrollState } from "../components/landing/landingScrollState";
 import { DashboardPage } from "./DashboardPage";
 import { MapPage } from "./MapPage";
 import { OutagesPage } from "./OutagesPage";
@@ -19,6 +20,7 @@ interface PreviewTab extends LandingFact {
 }
 
 const LOGO_SRC = "/care-route-logo.png";
+const HERO_EXIT_SCROLL = 0.055;
 
 const previewTabs: PreviewTab[] = [
   { ...landingFacts[0], path: "/dashboard", icon: GridIcon, panel: DashboardPage },
@@ -32,10 +34,25 @@ export function LandingPage() {
   const enterDashboard = () => navigate("/dashboard");
   const [selectedTab, setSelectedTab] = useState<number | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [heroExit, setHeroExit] = useState(0);
   const previewTimer = useRef<number | null>(null);
 
   useEffect(() => {
+    let frameId = 0;
+    let lastHeroExit = 0;
+
+    const syncHero = () => {
+      const nextHeroExit = Math.min(1, landingScrollState.offset / HERO_EXIT_SCROLL);
+      if (Math.abs(nextHeroExit - lastHeroExit) > 0.01) {
+        lastHeroExit = nextHeroExit;
+        setHeroExit(nextHeroExit);
+      }
+      frameId = window.requestAnimationFrame(syncHero);
+    };
+
+    frameId = window.requestAnimationFrame(syncHero);
     return () => {
+      window.cancelAnimationFrame(frameId);
       if (previewTimer.current !== null) {
         window.clearTimeout(previewTimer.current);
       }
@@ -83,7 +100,17 @@ export function LandingPage() {
 
       <FactCardsOverlay onSelectTab={openPreview} previewing={selectedTab !== null} />
 
-      <div className="landing__hero">
+      <div
+        className="landing__hero"
+        data-hidden={heroExit > 0.98}
+        style={
+          {
+            "--hero-opacity": (1 - heroExit).toFixed(3),
+            "--hero-scale": (1 - heroExit * 0.055).toFixed(3),
+            "--hero-y": `${(-heroExit * 36).toFixed(1)}px`,
+          } as CSSProperties
+        }
+      >
         <img className="landing__hero-logo" src={LOGO_SRC} alt="" aria-hidden="true" />
         <p className="landing__eyebrow">Proactive Care-Route Optimizer</p>
         <h1 className="landing__title">
