@@ -43,7 +43,7 @@ have at least one at-risk stop.
 ## 5. `BoroughRisk.atRiskStops` — always `0`
 
 **Stubbed in:** `api/views.py` (`DashboardSummaryView`, borough breakdown)
-**Depends on:** Gap 3.
+**Depends on:** Adding borough attribution to `RouteStop` (a `borough` column or geo-boundary lookup). Gap 3 being closed is necessary but not sufficient — the top-level `atRiskStops` count is now live, but per-borough attribution requires knowing which borough each stop belongs to, which is not currently tracked on the model.
 
 ---
 

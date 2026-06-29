@@ -92,36 +92,6 @@ NEARBY_OUTAGES_SQL = f"""
     ORDER BY distance_m ASC
 """
 
-# Single-point proximity shape for embedded stop alerts (used by _nearby_outages).
-PROXIMITY_SQL = f"""
-    SELECT
-        ec.complaint_number,
-        ec.bin,
-        ec.house_number,
-        ec.house_street,
-        ec.zip_code,
-        ec.date_entered,
-        ST_Distance(
-            ec.location::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
-        ) AS distance_m,
-        COALESCE(brs.is_chronic, false) AS is_chronic,
-        {_EFFECTIVE_SINGLE_ELEVATOR_SQL} AS is_single_elevator,
-        brs.heat_ratio,
-        brs.confidence
-    FROM elevator_complaints ec
-    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
-    WHERE ec.status = 'ACTIVE'
-      AND ec.location IS NOT NULL
-      AND ST_DWithin(
-            ec.location::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
-            %s
-          )
-    ORDER BY distance_m ASC
-"""
-
-# Batched version of PROXIMITY_SQL: one query for all stops in a route.
 # Each (stop_id, complaint_number) pair is unique — complaints are at fixed locations,
 # so a given complaint is either within range of a stop or it isn't.
 BATCH_PROXIMITY_SQL = f"""
@@ -190,11 +160,6 @@ def _run_query(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]
         return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
 
-def _nearby_outages(lat: float, lon: float) -> list[dict[str, Any]]:
-    """Compact proximity results for embedding in route-stop alert lists."""
-    return _run_query(PROXIMITY_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
-
-
 def _batch_nearby_outages(stops: list[RouteStop]) -> dict[int, list[dict[str, Any]]]:
     """Single-query proximity lookup for all geocoded stops; returns alerts grouped by stop pk."""
     stop_ids: list[int] = []
@@ -213,6 +178,70 @@ def _batch_nearby_outages(stops: list[RouteStop]) -> dict[int, list[dict[str, An
         stop_id: int = row.pop("stop_id")
         result.setdefault(stop_id, []).append(row)
     return result
+
+
+COUNT_AT_RISK_SQL = """
+    WITH stop_points AS (
+        SELECT UNNEST(%s::int[]) AS stop_id,
+               UNNEST(%s::float8[]) AS slon,
+               UNNEST(%s::float8[]) AS slat
+    )
+    SELECT COUNT(DISTINCT sp.stop_id)
+    FROM stop_points sp
+    JOIN elevator_complaints ec ON (
+        ec.status = 'ACTIVE' AND ec.location IS NOT NULL
+        AND ST_DWithin(ec.location::geography,
+                       ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography,
+                       %s)
+    )
+"""
+
+
+def _count_at_risk_stops(stops: list[RouteStop]) -> int:
+    stop_ids: list[int] = []
+    lons: list[float] = []
+    lats: list[float] = []
+    for s in stops:
+        if s.lat is not None and s.lon is not None:
+            stop_ids.append(s.pk)
+            lons.append(s.lon)
+            lats.append(s.lat)
+    if not stop_ids:
+        return 0
+    rows = _run_query(COUNT_AT_RISK_SQL, [stop_ids, lons, lats, ALERT_RADIUS_M])
+    return int(rows[0]["count"]) if rows else 0
+
+
+def _enrich_alerts_in_place(
+    alerts_by_stop_id: dict[int, list[dict[str, Any]]], is_heat_week: bool
+) -> None:
+    """Mutates each alert dict to add severity and suggested_action."""
+    for raw_alerts in alerts_by_stop_id.values():
+        for alert in raw_alerts:
+            severity = classify_severity(
+                distance_m=float(alert["distance_m"]),
+                is_chronic=bool(alert.get("is_chronic", False)),
+                is_single_elevator=alert.get("is_single_elevator"),
+                is_heat_week=is_heat_week,
+                heat_ratio=alert.get("heat_ratio"),
+                confidence=str(alert.get("confidence") or "low"),
+            )
+            alert["severity"] = severity
+            alert["suggested_action"] = suggest_action(
+                severity=severity,
+                is_single_elevator=alert.get("is_single_elevator"),
+                is_heat_week=is_heat_week,
+            )
+
+
+def _parse_date_param(request: Request) -> datetime.date | Response:
+    date_str = request.query_params.get("date")
+    if date_str:
+        try:
+            return datetime.date.fromisoformat(date_str)
+        except ValueError:
+            return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
+    return datetime.date.today()
 
 
 class HealthCheckView(APIView):
@@ -323,7 +352,7 @@ class DashboardSummaryView(APIView):
             {
                 "borough": BOROUGH_BY_CODE.get(str(code), str(code)),
                 "active_outages": int(active),
-                "at_risk_stops": 0,  # stub — see docs/deferred-frontend-api-gaps.md
+                "at_risk_stops": 0,  # needs borough column on RouteStop — see Gap 5 in docs/
                 "chronic_offenders": int(chronic),
             }
             for code, active, chronic in borough_rows
@@ -356,9 +385,11 @@ class DashboardSummaryView(APIView):
             "forecast": forecast_days,
         }
 
-        today_stops = list(RouteStop.objects.filter(route__date=datetime.date.today()))
-        at_risk_stop_ids = _batch_nearby_outages(today_stops)
-        at_risk_stops = len(at_risk_stop_ids)
+        try:
+            today_stops = list(RouteStop.objects.filter(route__date=datetime.date.today()))
+            at_risk_stops = _count_at_risk_stops(today_stops)
+        except Exception:
+            at_risk_stops = 0
 
         return Response(
             {
@@ -416,43 +447,21 @@ class RouteDetailView(RetrieveAPIView[Route]):
         stops = list(route.stops.all())
         is_heat_week = get_is_heat_week()
         alerts_by_stop_id = _batch_nearby_outages(stops)
-        for raw_alerts in alerts_by_stop_id.values():
-            for alert in raw_alerts:
-                severity = classify_severity(
-                    distance_m=float(alert["distance_m"]),
-                    is_chronic=bool(alert.get("is_chronic", False)),
-                    is_single_elevator=alert.get("is_single_elevator"),
-                    is_heat_week=is_heat_week,
-                    heat_ratio=alert.get("heat_ratio"),
-                    confidence=str(alert.get("confidence") or "low"),
-                )
-                alert["severity"] = severity
-                alert["suggested_action"] = suggest_action(
-                    severity=severity,
-                    is_single_elevator=alert.get("is_single_elevator"),
-                    is_heat_week=is_heat_week,
-                )
+        _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
 
 
 class RouteStopsView(APIView):
-    """
-    GET /api/routes/stops/?date=YYYY-MM-DD — all stops for a given date's routes.
-    Defaults to today when ?date is omitted.
-    """
+    """GET /api/routes/stops/ — all stops for a given date's routes."""
 
     permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_str = request.query_params.get("date")
-        if date_str:
-            try:
-                target_date = datetime.date.fromisoformat(date_str)
-            except ValueError:
-                return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
-        else:
-            target_date = datetime.date.today()
+        date_result = _parse_date_param(request)
+        if isinstance(date_result, Response):
+            return date_result
+        target_date = date_result
 
         stops = (
             RouteStop.objects.select_related("route")
@@ -466,23 +475,15 @@ _SEVERITY_ORDER: dict[str, int] = {"critical": 0, "warning": 1, "watch": 2}
 
 
 class AlertsAtRiskView(APIView):
-    """
-    GET /api/alerts/at-risk/?date=YYYY-MM-DD — stops with active proximity alerts.
-    Returns only stops that have at least one nearby active outage.
-    Defaults to today when ?date is omitted.
-    """
+    """GET /api/alerts/at-risk/ — stops with ≥1 active proximity alert."""
 
     permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_str = request.query_params.get("date")
-        if date_str:
-            try:
-                target_date = datetime.date.fromisoformat(date_str)
-            except ValueError:
-                return Response({"detail": "date must be ISO format (YYYY-MM-DD)."}, status=400)
-        else:
-            target_date = datetime.date.today()
+        date_result = _parse_date_param(request)
+        if isinstance(date_result, Response):
+            return date_result
+        target_date = date_result
 
         stops = list(
             RouteStop.objects.select_related("route")
@@ -491,23 +492,7 @@ class AlertsAtRiskView(APIView):
         )
         is_heat_week = get_is_heat_week()
         alerts_by_stop_id = _batch_nearby_outages(stops)
-
-        for raw_alerts in alerts_by_stop_id.values():
-            for alert in raw_alerts:
-                severity = classify_severity(
-                    distance_m=float(alert["distance_m"]),
-                    is_chronic=bool(alert.get("is_chronic", False)),
-                    is_single_elevator=alert.get("is_single_elevator"),
-                    is_heat_week=is_heat_week,
-                    heat_ratio=alert.get("heat_ratio"),
-                    confidence=str(alert.get("confidence") or "low"),
-                )
-                alert["severity"] = severity
-                alert["suggested_action"] = suggest_action(
-                    severity=severity,
-                    is_single_elevator=alert.get("is_single_elevator"),
-                    is_heat_week=is_heat_week,
-                )
+        _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
 
         results = []
         for stop in stops:

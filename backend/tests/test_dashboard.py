@@ -55,6 +55,15 @@ def _seed_forecast(days: list[tuple[str, float]]) -> None:
         )
 
 
+def _set_location(complaint_number: str, lon: float, lat: float) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
+            " WHERE complaint_number = %s",
+            [lon, lat, complaint_number],
+        )
+
+
 @pytest.mark.django_db
 class TestDashboardSummaryView:
     """Tests for GET /api/dashboard/summary/."""
@@ -204,3 +213,40 @@ class TestDashboardSummaryView:
         days = resp.json()["heatForecast"]["forecast"]
         assert days[0]["isHeatDay"] is True
         assert days[1]["isHeatDay"] is False
+
+    def test_at_risk_stops_count_when_stop_near_outage(self) -> None:
+        today = datetime.date.today()
+        from api.models import Route, RouteStop
+
+        complaint = ElevatorComplaintFactory(lat=40.7580, lon=-73.9855)
+        _set_location(complaint.complaint_number, -73.9855, 40.7580)
+        route = Route.objects.create(name="At-Risk Route", date=today)
+        RouteStop.objects.create(
+            route=route, address="Near Stop", lat=40.7580, lon=-73.9855, order=0
+        )
+        resp = Client().get("/api/dashboard/summary/")
+        assert resp.json()["atRiskStops"] >= 1
+
+    def test_at_risk_stops_zero_when_stop_far_from_outages(self) -> None:
+        today = datetime.date.today()
+        from api.models import Route, RouteStop
+
+        complaint = ElevatorComplaintFactory(lat=40.7580, lon=-73.9855)
+        _set_location(complaint.complaint_number, -73.9855, 40.7580)
+        route = Route.objects.create(name="Far Route", date=today)
+        # Brooklyn ~12 km from Times Square, outside the 804.67 m radius
+        RouteStop.objects.create(
+            route=route, address="Far Stop", lat=40.6501, lon=-73.9496, order=0
+        )
+        resp = Client().get("/api/dashboard/summary/")
+        assert resp.json()["atRiskStops"] == 0
+
+    def test_at_risk_stops_zero_when_no_todays_routes(self) -> None:
+        from api.models import Route, RouteStop
+
+        past_route = Route.objects.create(name="Past Route", date=datetime.date(2026, 1, 1))
+        RouteStop.objects.create(
+            route=past_route, address="Old Stop", lat=40.7580, lon=-73.9855, order=0
+        )
+        resp = Client().get("/api/dashboard/summary/")
+        assert resp.json()["atRiskStops"] == 0
