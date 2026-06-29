@@ -49,14 +49,14 @@ flowchart TD
     end
 
     subgraph BE ["Backend · Django REST Framework · Karl"]
-        API["REST API\n/api/outages  /api/routes  /api/buildings\n/api/dashboard/summary  /api/providers"]
-        Pipeline["Ingest pipeline\ningest_outages · ingest_weather · ingest_dfta\ningest_elevator_devices · compute_risk_scores"]
+        API["REST API\n/api/outages  /api/routes  /api/routes/stops\n/api/alerts/at-risk  /api/buildings\n/api/dashboard/summary  /api/providers"]
+        Pipeline["Ingest pipeline\ningest_outages · ingest_weather · ingest_forecast\ningest_dfta · ingest_elevator_devices\ncompute_risk_scores · purge_old_routes"]
     end
 
-    DB[("PostgreSQL + PostGIS\nelevator_complaints · building_risk_scores\nweather_days · dfta_* · routes")]
+    DB[("PostgreSQL + PostGIS\nelevator_complaints · building_risk_scores\nweather_days · weather_forecasts\ndfta_* · routes · route_stops")]
 
     NOD["NYC Open Data\nkqwi-7ncn · e5aq-a4j2 · juyv-2jek · ygfr-ij6t"]
-    OM["Open-Meteo\nHistorical Archive"]
+    OM["Open-Meteo\nHistorical Archive + Forecast API"]
     GS["NYC Planning\nGeoSearch API"]
 
     Dispatcher --> FE
@@ -71,12 +71,13 @@ flowchart TD
 
 ### Data flow
 
-1. **Ingestion** — Five management commands populate the database (run in order):
+1. **Ingestion** — Six management commands populate the database (run in order):
    - `ingest_outages` — polls the NYC Open Data elevator-complaint API and upserts `elevator_complaints`
    - `ingest_weather` — fetches daily temperature maxima from Open-Meteo archive (2018–today) into `weather_days`
-   - `ingest_forecast` — fetches the 7-day temperature forecast from Open-Meteo into `weather_forecasts`; should run daily
+   - `ingest_forecast` — fetches the 7-day temperature forecast from Open-Meteo into `weather_forecasts`; run daily
    - `ingest_dfta` — fetches DFTA senior center (and optional provider) locations from NYC Open Data
    - `ingest_elevator_devices` — two-step join through `e5aq-a4j2` and `juyv-2jek` to populate `building_risk_scores.is_single_elevator`; must run after `compute_risk_scores`
+   - `purge_old_routes` — deletes `Route` rows (and their `RouteStop` children) older than 90 days; run on a schedule to limit care-recipient address retention
 
 2. **Risk scoring** — `compute_risk_scores` runs after the ingest commands and scores every building that appears in the complaint history:
    - Identifies **chronic offenders** (≥1 complaint in 12mo AND ≥3 complaints in 3yr)
@@ -84,11 +85,13 @@ flowchart TD
    - Computes **heat correlation metrics** per building: `heat_ratio` (heat-week vs. non-heat-week complaint rate), Pearson r/p, and a confidence level
    - Results are stored in `building_risk_scores` and exposed via `/api/buildings/`
 
-3. **Route alerting** — When a dispatcher loads a route, the backend runs a PostGIS `ST_DWithin` query comparing stop coordinates against active outage coordinates within the 0.5-mile risk radius.
+3. **Route alerting** — When a dispatcher loads a route (`GET /api/routes/<id>/`), the backend runs a single batched PostGIS query comparing all stop coordinates against active outage coordinates within the 0.5-mile risk radius. Each matching complaint is classified by severity (`critical` / `warning` / `watch`) and enriched with dispatcher guidance.
 
-4. **Delivery** — The API response includes an `outage_alert` flag on each stop, and `/api/buildings/` provides ranked risk scores for the full building inventory.
+4. **Proactive alerting** — `GET /api/alerts/at-risk/` screens all route stops for the current date against the live outage feed in one batched PostGIS query and returns only stops with active proximity alerts. `GET /api/routes/stops/` returns all stops for a given date's routes (defaults to today) — the source list for map display and at-risk screening. Both endpoints require an API key.
 
-5. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders the affected stop on the map.
+5. **Delivery** — `/api/dashboard/summary/` aggregates the at-risk stop count, active outage count, chronic offender count, heat forecast, and borough breakdown into a single response for the Dispatcher Dashboard. `/api/buildings/` provides the full ranked building risk inventory.
+
+6. **Rendering** — The React frontend receives the payload, displays a prominent warning banner on the Dispatcher Dashboard, and re-renders affected stops on the map.
 
 Deployed on [Render](https://render.com) via Blueprint (`render.yaml`). The frontend proxies all `/api` requests to the Django backend.
 
@@ -400,7 +403,8 @@ proactive-care-route-optimizer/
 ├── CLAUDE.md                  Claude Code session config and project guide
 ├── CHANGELOG.md
 ├── docs/
-│   └── nyc-open-data.md       NYC Open Data integration guide (datasets, ingest, PostGIS)
+│   ├── nyc-open-data.md           NYC Open Data integration guide (datasets, ingest, PostGIS)
+│   └── deferred-frontend-api-gaps.md  Known gaps between frontend types and backend data
 ├── .gitattributes             LF line endings enforced
 ├── .pre-commit-config.yaml    ruff + prettier + no-AI-attribution
 ├── pyproject.toml             commitizen config (root-level versioning)
