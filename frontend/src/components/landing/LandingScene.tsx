@@ -1,10 +1,11 @@
-import { PerspectiveCamera, ScrollControls, Sparkles, useScroll } from "@react-three/drei";
+import { ScrollControls, useScroll } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 
-import { useMemo, useRef } from "react";
+import type { PointerEvent } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import type { PerspectiveCamera as PerspectiveCameraImpl } from "three";
-import { Vector3 } from "three";
+import type { Group, PerspectiveCamera } from "three";
+import { MathUtils, Vector3 } from "three";
 
 import { Elevator3D } from "./Elevator3D";
 import { CARD_ORBIT_POSITIONS } from "./cardOrbit";
@@ -12,107 +13,146 @@ import { landingScrollState } from "./landingScrollState";
 
 const PAGES = 8;
 
-export function LandingScene() {
+interface LandingSceneProps {
+  selectedTab: number | null;
+}
+
+export function LandingScene({ selectedTab }: LandingSceneProps) {
+  const dragRef = useRef({
+    active: false,
+    pointerId: -1,
+    startRotation: 0,
+    startX: 0,
+  });
+
+  const startDrag = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+
+    dragRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startRotation: landingScrollState.dragRotation,
+      startX: event.clientX,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag.active || drag.pointerId !== event.pointerId) return;
+
+    landingScrollState.dragRotation = drag.startRotation + (event.clientX - drag.startX) * 0.008;
+  };
+
+  const endDrag = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (
+      drag.pointerId === event.pointerId &&
+      event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current.active = false;
+  };
+
   return (
     <Canvas
       dpr={1}
       gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
       style={{ position: "absolute", inset: 0 }}
+      onPointerDown={startDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onPointerLeave={endDrag}
     >
-      <color attach="background" args={["#06030f"]} />
-      <fog attach="fog" args={["#06030f", 14, 50]} />
+      <color attach="background" args={["#000000"]} />
+      <fog attach="fog" args={["#000000", 18, 52]} />
 
-      <ambientLight intensity={0.35} />
-      <directionalLight position={[6, 12, 4]} intensity={0.7} color="#f5f0ff" />
-      <pointLight position={[-8, 4, -2]} intensity={3.0} color="#7c3aed" />
-      <pointLight position={[8, 6, 2]} intensity={2.2} color="#a78bfa" />
-      <pointLight position={[0, -2, 8]} intensity={1.4} color="#c4b5fd" />
-      <pointLight position={[0, 9, 0]} intensity={1.6} color="#e9d5ff" />
+      <ambientLight intensity={0.3} />
+      <directionalLight position={[-3.5, 8, 5]} intensity={1.7} color="#ffffff" />
+      <spotLight
+        position={[1.2, 7.5, 4.2]}
+        angle={0.38}
+        penumbra={0.72}
+        intensity={7.2}
+        color="#ffffff"
+      />
+      <spotLight
+        position={[-5, 4.5, 1.8]}
+        angle={0.46}
+        penumbra={0.8}
+        intensity={4.8}
+        color="#8b5cf6"
+      />
+      <pointLight position={[3.2, 4.8, 1.8]} intensity={6.8} color="#7c3aed" distance={9} />
+      <pointLight position={[-2.6, 0.9, 3.2]} intensity={3.2} color="#ffffff" distance={7} />
 
       <ScrollControls pages={PAGES} damping={0.22}>
-        <ScrollableScene />
+        <ScrollableScene selectedTab={selectedTab} />
       </ScrollControls>
     </Canvas>
   );
 }
 
-function ScrollableScene() {
+interface ScrollableSceneProps {
+  selectedTab: number | null;
+}
+
+function ScrollableScene({ selectedTab }: ScrollableSceneProps) {
   const scroll = useScroll();
-  const cameraRef = useRef<PerspectiveCameraImpl>(null);
+  const { camera } = useThree();
+  const elevatorRef = useRef<Group>(null);
   const camPos = useMemo(() => new Vector3(), []);
   const lookTarget = useMemo(() => new Vector3(), []);
+  const currentLook = useMemo(() => new Vector3(0, 2.45, 0), []);
+  const targetZoomOutPos = useMemo(() => new Vector3(4.8, 3.65, 7.6), []);
+  const targetZoomOutLook = useMemo(() => new Vector3(0, 0.05, 0), []);
   const cardVecs = useMemo(() => CARD_ORBIT_POSITIONS.map(([x, y, z]) => new Vector3(x, y, z)), []);
   const keys = useMemo(() => buildKeyframes(cardVecs), [cardVecs]);
 
+  useEffect(() => {
+    const pCam = camera as PerspectiveCamera;
+    if (pCam.isPerspectiveCamera) {
+      pCam.fov = 48;
+      pCam.near = 0.1;
+      pCam.far = 140;
+      pCam.updateProjectionMatrix();
+    }
+    camera.position.set(0.8, 0.8, 3.2);
+    camera.lookAt(0, 2.45, 0);
+    camera.updateMatrixWorld();
+  }, [camera]);
+
   useFrame(() => {
-    const offset = scroll.offset;
-    landingScrollState.offset = offset;
-    if (!cameraRef.current) return;
-    sampleKeys(keys, offset, camPos, lookTarget);
-    cameraRef.current.position.copy(camPos);
-    cameraRef.current.lookAt(lookTarget);
+    if (selectedTab !== null) {
+      camera.position.lerp(targetZoomOutPos, 0.06);
+      currentLook.lerp(targetZoomOutLook, 0.06);
+      camera.lookAt(currentLook);
+    } else {
+      const offset = scroll.offset;
+      landingScrollState.offset = offset;
+      sampleKeys(keys, offset, camPos, lookTarget);
+
+      camera.position.lerp(camPos, 0.085);
+      currentLook.lerp(lookTarget, 0.085);
+      camera.lookAt(currentLook);
+    }
+    if (elevatorRef.current) {
+      elevatorRef.current.rotation.y = MathUtils.lerp(
+        elevatorRef.current.rotation.y,
+        landingScrollState.dragRotation,
+        0.12
+      );
+    }
+    camera.updateMatrixWorld();
   });
 
   return (
-    <>
-      <PerspectiveCamera
-        ref={cameraRef}
-        makeDefault
-        fov={48}
-        position={[0, 9, 5]}
-        near={0.1}
-        far={140}
-      />
-
+    <group ref={elevatorRef}>
       <Elevator3D />
-
-      <Sparkles count={160} size={3} scale={[14, 18, 14]} speed={0.4} color="#c4b5fd" />
-      <Sparkles count={80} size={5} scale={[8, 12, 8]} speed={0.6} color="#f0abfc" opacity={0.7} />
-      <Sparkles count={50} size={8} scale={[5, 9, 5]} speed={0.3} color="#fde68a" opacity={0.35} />
-
-      <CardPositionSyncer cardVecs={cardVecs} />
-    </>
+    </group>
   );
-}
-
-interface SyncerProps {
-  cardVecs: Vector3[];
-}
-
-function CardPositionSyncer({ cardVecs }: SyncerProps) {
-  const { camera, size } = useThree();
-  const tmp = useMemo(() => new Vector3(), []);
-  const cameraPos = useMemo(() => new Vector3(), []);
-
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    cameraPos.copy(camera.position);
-    landingScrollState.cards = cardVecs.map((basePos, idx) => {
-      tmp.set(basePos.x, basePos.y + Math.sin(t * 0.5 + idx) * 0.18, basePos.z);
-      const distFromCamera = tmp.distanceTo(cameraPos);
-      tmp.project(camera);
-      const inFrustum = tmp.z < 1 && tmp.z > -1;
-      const x = (tmp.x * 0.5 + 0.5) * size.width;
-      const y = (-tmp.y * 0.5 + 0.5) * size.height;
-      const near = 2.5;
-      const far = 16;
-      const depthNorm = Math.max(0, Math.min(1, (distFromCamera - near) / (far - near)));
-      const scale = lerp(1.35, 0.45, depthNorm);
-      const opacity = inFrustum ? lerp(1, 0.2, depthNorm) : 0;
-      const zIndex = Math.round(1500 - distFromCamera * 25);
-      return {
-        x,
-        y,
-        scale,
-        opacity,
-        visible: inFrustum,
-        depth: distFromCamera,
-        zIndex,
-      };
-    });
-  });
-
-  return null;
 }
 
 interface CamKey {
@@ -124,37 +164,48 @@ interface CamKey {
 function buildKeyframes(cards: Vector3[]): CamKey[] {
   const keys: CamKey[] = [];
 
-  keys.push({ t: 0.0, pos: [0, 9.0, 4.5], look: [0, 5.5, 0] });
-  keys.push({ t: 0.05, pos: [1.6, 7.5, 5.5], look: [0, 4.8, 0] });
+  keys.push({ t: 0.0, pos: [1.05, 0.9, 4.2], look: [0, 2.45, 0] });
+  keys.push({ t: 0.04, pos: [1.75, 2.55, 4.35], look: [0, 2.2, 0] });
 
-  const N = cards.length;
   const startT = 0.05;
   const endT = 0.86;
   const totalSpan = endT - startT;
 
-  for (let i = 0; i < N; i += 1) {
-    const tZoom = startT + totalSpan * ((i + 0.5) / N);
-    const tCrawl = startT + totalSpan * ((i + 1) / N);
-    const c = cards[i];
-    const r = Math.hypot(c.x, c.z);
-    const zoomScale = (r + 2.0) / Math.max(r, 0.001);
-    const camZoom: [number, number, number] = [c.x * zoomScale, c.y + 0.35, c.z * zoomScale];
-    keys.push({ t: tZoom, pos: camZoom, look: [c.x, c.y, c.z] });
+  for (let i = 0; i < cards.length; i += 1) {
+    const tZoom = startT + totalSpan * ((i + 0.5) / cards.length);
+    const tCrawl = startT + totalSpan * ((i + 1) / cards.length);
+    const card = cards[i];
+    const radius = Math.hypot(card.x, card.z);
+    const zoomScale = (radius + 2.25) / Math.max(radius, 0.001);
+    const camZoom: [number, number, number] = [
+      card.x * zoomScale,
+      card.y + 0.12,
+      card.z * zoomScale,
+    ];
 
-    if (i < N - 1) {
+    keys.push({ t: tZoom - 0.035, pos: camZoom, look: [card.x, card.y, card.z] });
+    keys.push({ t: tZoom + 0.04, pos: camZoom, look: [card.x, card.y, card.z] });
+
+    if (i < cards.length - 1) {
       const next = cards[i + 1];
-      const midX = (c.x + next.x) / 2;
-      const midZ = (c.z + next.z) / 2;
-      const midY = (c.y + next.y) / 2;
-      const midR = Math.hypot(midX, midZ);
-      const crawlScale = (midR + 6.5) / Math.max(midR, 0.001);
-      const crawlPos: [number, number, number] = [midX * crawlScale, midY + 1.0, midZ * crawlScale];
-      keys.push({ t: tCrawl, pos: crawlPos, look: [0, midY, 0] });
+      const midX = (card.x + next.x) / 2;
+      const midZ = (card.z + next.z) / 2;
+      const midY = (card.y + next.y) / 2;
+      const midRadius = Math.hypot(midX, midZ);
+      const crawlScale = (midRadius + 4.35) / Math.max(midRadius, 0.001);
+      const crawlPos: [number, number, number] = [
+        midX * crawlScale,
+        midY + 0.72,
+        midZ * crawlScale,
+      ];
+      const cabinYAtCrawl = (1 - tCrawl) * 6.75 - 4.3;
+
+      keys.push({ t: tCrawl, pos: crawlPos, look: [0, cabinYAtCrawl + 1.2, 0] });
     }
   }
 
-  keys.push({ t: 0.93, pos: [0.6, -5.0, 3.5], look: [0, 3.0, 0] });
-  keys.push({ t: 1.0, pos: [0.6, -6.5, 3.2], look: [0, 4.5, 0] });
+  keys.push({ t: 0.93, pos: [0.9, -1.4, 4.35], look: [0, -3.5, 0] });
+  keys.push({ t: 1.0, pos: [0.2, -1.7, 4.8], look: [0, -4.3, 0] });
 
   keys.sort((a, b) => a.t - b.t);
   return keys;
@@ -167,24 +218,15 @@ function sampleKeys(keys: CamKey[], t: number, outPos: Vector3, outLook: Vector3
   const k1 = keys[i + 1];
   const range = Math.max(k1.t - k0.t, 1e-6);
   const segT = (t - k0.t) / range;
-  const e = smoothstep(Math.max(0, Math.min(1, segT)));
+  const e = MathUtils.smoothstep(MathUtils.clamp(segT, 0, 1), 0, 1);
   outPos.set(
-    lerp(k0.pos[0], k1.pos[0], e),
-    lerp(k0.pos[1], k1.pos[1], e),
-    lerp(k0.pos[2], k1.pos[2], e)
+    MathUtils.lerp(k0.pos[0], k1.pos[0], e),
+    MathUtils.lerp(k0.pos[1], k1.pos[1], e),
+    MathUtils.lerp(k0.pos[2], k1.pos[2], e)
   );
   outLook.set(
-    lerp(k0.look[0], k1.look[0], e),
-    lerp(k0.look[1], k1.look[1], e),
-    lerp(k0.look[2], k1.look[2], e)
+    MathUtils.lerp(k0.look[0], k1.look[0], e),
+    MathUtils.lerp(k0.look[1], k1.look[1], e),
+    MathUtils.lerp(k0.look[2], k1.look[2], e)
   );
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function smoothstep(t: number): number {
-  const x = Math.max(0, Math.min(1, t));
-  return x * x * (3 - 2 * x);
 }

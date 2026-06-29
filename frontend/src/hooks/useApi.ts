@@ -31,6 +31,7 @@ export function useApi<T>(fetcher: () => Promise<T>): ApiState<T> {
     return () => {
       active = false;
     };
+    // Fetcher is expected to be a stable module-level API reference; remounting refetches.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

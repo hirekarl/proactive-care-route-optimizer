@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Circle, CircleMarker, MapContainer, Popup, TileLayer, Tooltip } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -29,12 +30,38 @@ export function OutageMap({ outages, stops, providers, height = 560 }: OutageMap
         />
 
         {outages.map((outage) => (
-          <Circle
-            key={`ring-${outage.id}`}
-            center={[outage.lat, outage.lng]}
-            radius={HALF_MILE_METERS}
-            pathOptions={{ color: "#ef4444", weight: 1, fillColor: "#ef4444", fillOpacity: 0.06 }}
-          />
+          <Fragment key={outage.id}>
+            <Circle
+              center={[outage.lat, outage.lng]}
+              radius={HALF_MILE_METERS}
+              pathOptions={{
+                color: "#ef4444",
+                weight: 1,
+                fillColor: "#ef4444",
+                fillOpacity: 0.06,
+              }}
+            />
+            <CircleMarker
+              center={[outage.lat, outage.lng]}
+              radius={9}
+              pathOptions={{ color: "#fff", weight: 2, fillColor: "#ef4444", fillOpacity: 1 }}
+            >
+              <Tooltip>Outage - {outage.address}</Tooltip>
+              <Popup>
+                <strong>Active elevator outage</strong>
+                <br />
+                {outage.address}
+                <br />
+                Complaint #{outage.complaintNumber}
+                {outage.singleElevator && (
+                  <>
+                    <br />
+                    Warning: single-elevator building
+                  </>
+                )}
+              </Popup>
+            </CircleMarker>
+          </Fragment>
         ))}
 
         {providers.map((provider) => (
@@ -63,37 +90,14 @@ export function OutageMap({ outages, stops, providers, height = 560 }: OutageMap
             pathOptions={{ color: "#fff", weight: 2, fillColor: "#f59e0b", fillOpacity: 1 }}
           >
             <Tooltip>
-              {stop.recipientName} · Floor {stop.floor}
+              {stop.recipientName} - Floor {stop.floor}
             </Tooltip>
             <Popup>
               <strong>{stop.recipientName}</strong>
               <br />
               {stop.address}
               <br />
-              Route {stop.routeId} · Floor {stop.floor}
-            </Popup>
-          </CircleMarker>
-        ))}
-
-        {outages.map((outage) => (
-          <CircleMarker
-            key={outage.id}
-            center={[outage.lat, outage.lng]}
-            radius={9}
-            pathOptions={{ color: "#fff", weight: 2, fillColor: "#ef4444", fillOpacity: 1 }}
-          >
-            <Tooltip>Outage · {outage.address}</Tooltip>
-            <Popup>
-              <strong>Active elevator outage</strong>
-              <br />
-              {outage.address}
-              <br />
-              Complaint #{outage.complaintNumber}
-              {outage.singleElevator && (
-                <>
-                  <br />⚠ Single-elevator building
-                </>
-              )}
+              Route {stop.routeId} - Floor {stop.floor}
             </Popup>
           </CircleMarker>
         ))}

@@ -10,8 +10,10 @@ export interface CardProjection {
 
 export const landingScrollState: {
   offset: number;
+  dragRotation: number;
   cards: CardProjection[];
 } = {
   offset: 0,
+  dragRotation: 0,
   cards: [],
 };
