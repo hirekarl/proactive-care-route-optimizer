@@ -101,3 +101,5 @@ services:
           name: pcro-backend
           type: web
           property: host
+      - key: VITE_USE_MOCK
+        value: "false"
