@@ -1,7 +1,7 @@
 """Ingest DFTA senior center and provider locations from NYC Open Data."""
 
 import httpx
-from django.core.management.base import BaseCommand, CommandParser
+from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import connection, transaction
 
 from api.geocoding import geocode_address
@@ -24,6 +24,11 @@ class Command(BaseCommand):
                 f"(default: {DEFAULT_PROVIDER_DATASET})."
             ),
         )
+        parser.add_argument(
+            "--skip-providers",
+            action="store_true",
+            help="Ingest senior centers only; skip the provider dataset call.",
+        )
 
     def handle(self, *args: object, **options: object) -> None:
         from decouple import config as env_config
@@ -33,13 +38,20 @@ class Command(BaseCommand):
 
         self._ingest_senior_centers(headers)
 
-        provider_dataset = str(options.get("provider_dataset") or DEFAULT_PROVIDER_DATASET).strip()
-        self._ingest_providers(provider_dataset, headers)
+        if not options["skip_providers"]:
+            provider_dataset = str(options["provider_dataset"]).strip()
+            if not provider_dataset:
+                raise CommandError("--provider-dataset cannot be empty")
+            self._ingest_providers(provider_dataset, headers)
 
     def _ingest_senior_centers(self, headers: dict[str, str]) -> None:
         self.stdout.write("Fetching DFTA senior centers (ygfr-ij6t)...")
         rows = self._fetch_all(SENIOR_CENTERS_URL, headers)
         self.stdout.write(f"  {len(rows)} rows fetched.")
+        if not rows:
+            raise CommandError(
+                "0 rows fetched for senior centers — aborting to protect existing data"
+            )
 
         centers: list[DFTASeniorCenter] = []
         for row in rows:
@@ -76,6 +88,8 @@ class Command(BaseCommand):
         self.stdout.write(f"Fetching DFTA providers ({dataset_id})...")
         rows = self._fetch_all(url, headers)
         self.stdout.write(f"  {len(rows)} rows fetched.")
+        if not rows:
+            raise CommandError("0 rows fetched for providers — aborting to protect existing data")
 
         providers: list[DFTAProvider] = []
         for row in rows:
@@ -122,6 +136,17 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"  {len(providers)} providers stored."))
 
+    def _address_candidates(self, row: dict[str, str]) -> list[str]:
+        candidates = []
+        if row.get("programaddress"):
+            candidates.append(row["programaddress"])
+        if row.get("address"):
+            candidates.append(row["address"])
+        parts = ((row.get("house_number") or "") + " " + (row.get("street_name") or "")).strip()
+        if parts:
+            candidates.append(parts)
+        return candidates
+
     def _coords_from_row(
         self, row: dict[str, str], headers: dict[str, str]
     ) -> tuple[float, float] | None:
@@ -132,16 +157,13 @@ class Command(BaseCommand):
                 return float(lon_str), float(lat_str)
             except ValueError:
                 pass
-        # Fallback: geocode from address fields
-        parts = [
-            row.get("programaddress")
-            or row.get("address")
-            or ((row.get("house_number") or "") + " " + (row.get("street_name") or "")).strip(),
-            row.get("borough", ""),
-            "NY",
-        ]
-        address = " ".join(p for p in parts if p)
-        return geocode_address(address)
+        # Fallback: try each address candidate in priority order
+        borough = row.get("borough", "")
+        for candidate in self._address_candidates(row):
+            result = geocode_address(f"{candidate} {borough} NY".strip())
+            if result is not None:
+                return result
+        return None
 
     def _fetch_all(self, url: str, headers: dict[str, str]) -> list[dict[str, str]]:
         rows: list[dict[str, str]] = []
