@@ -53,8 +53,8 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
       Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
     );
     const orbit = compact
-      ? { centerX: 50, centerY: 50, radiusX: 18, radiusY: 25, swayY: 3.6 }
-      : { centerX: 61, centerY: 53, radiusX: 24, radiusY: 30, swayY: 3.2 };
+      ? { centerX: 50, centerY: 48, radiusX: 18, radiusY: 20, swayY: 3.6 }
+      : { centerX: 61, centerY: 50, radiusX: 24, radiusY: 22, swayY: 3.2 };
     const yValues = landingFloors.map((floor) => floor.position[1]);
     const maxY = Math.max(...yValues);
     const minY = Math.min(...yValues);
