@@ -9,47 +9,53 @@ export function HeatAdvisoryBanner({ forecast }: HeatAdvisoryBannerProps) {
 
   const tomorrow = forecast.forecast.slice(1, 3).find((d) => d.isHeatDay);
   const headline = forecast.isHeatWeek
-    ? `Heat week — ${forecast.daysAbove90} day${forecast.daysAbove90 === 1 ? "" : "s"} ≥ 90°F forecast`
-    : `Elevated heat — ${forecast.daysAbove90} day${forecast.daysAbove90 === 1 ? "" : "s"} ≥ 90°F forecast`;
-  const peak = forecast.peakTempF != null ? `${forecast.peakTempF.toFixed(1)}°F peak` : null;
+    ? `Heat week - ${forecast.daysAbove90} day${forecast.daysAbove90 === 1 ? "" : "s"} at or above 90F`
+    : `Elevated heat - ${forecast.daysAbove90} day${forecast.daysAbove90 === 1 ? "" : "s"} at or above 90F`;
+  const peak = forecast.peakTempF != null ? `${forecast.peakTempF.toFixed(1)}F peak` : null;
   const nearTerm = tomorrow ? `Next heat day: ${formatShort(tomorrow.date)}` : null;
 
   return (
     <section
       role="status"
-      className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm sm:flex-row sm:items-center sm:gap-5"
+      className="relative overflow-hidden rounded-lg border border-fuchsia-200/15 bg-white/[0.06] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl"
     >
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-700"
-        >
-          <SunIcon />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
-            Heat advisory
-          </p>
-          <p className="text-sm font-semibold text-slate-900">{headline}</p>
-          <p className="mt-0.5 text-xs text-slate-600">
-            Elevator complaint volume rises {"1.2×"} during heat weeks — prioritize wellness checks
-            on upper-floor recipients.
-          </p>
+      <div
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 w-2/3 bg-[radial-gradient(circle_at_22%_55%,rgba(232,121,249,0.28),transparent_46%),linear-gradient(90deg,rgba(251,113,133,0.14),transparent)]"
+      />
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="bg-fuchsia-200/12 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-fuchsia-200/20 text-fuchsia-100 shadow-[0_0_28px_rgba(232,121,249,0.22)]"
+          >
+            <SunIcon />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-fuchsia-200/75">
+              Heat advisory
+            </p>
+            <p className="text-sm font-semibold text-white">{headline}</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Elevator complaint volume rises 1.2x during heat weeks. Prioritize wellness checks on
+              upper-floor recipients.
+            </p>
+          </div>
         </div>
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
+          {peak && (
+            <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-100">
+              {peak}
+            </span>
+          )}
+          {nearTerm && (
+            <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-100">
+              {nearTerm}
+            </span>
+          )}
+        </div>
+        <ForecastStrip forecast={forecast.forecast} />
       </div>
-      <div className="flex flex-wrap gap-2 sm:ml-auto">
-        {peak && (
-          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-300">
-            {peak}
-          </span>
-        )}
-        {nearTerm && (
-          <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-300">
-            {nearTerm}
-          </span>
-        )}
-      </div>
-      <ForecastStrip forecast={forecast.forecast} />
     </section>
   );
 }
@@ -60,20 +66,20 @@ interface ForecastStripProps {
 
 function ForecastStrip({ forecast }: ForecastStripProps) {
   return (
-    <ol className="flex gap-1 overflow-x-auto sm:ml-2">
+    <ol className="flex flex-wrap gap-1 sm:ml-2 sm:justify-end">
       {forecast.map((day) => (
         <li
           key={day.date}
           className={`flex min-w-[3.2rem] flex-col items-center rounded-md px-2 py-1.5 text-center text-xs ${
             day.isHeatDay
-              ? "bg-amber-200 font-semibold text-amber-900"
-              : "bg-white text-slate-600 ring-1 ring-inset ring-amber-200"
+              ? "bg-fuchsia-200/18 font-semibold text-fuchsia-50 ring-1 ring-fuchsia-200/25"
+              : "bg-white/[0.06] text-slate-400 ring-1 ring-inset ring-white/10"
           }`}
         >
           <span className="text-[10px] uppercase tracking-wide opacity-70">
             {formatDayLabel(day.date)}
           </span>
-          <span className="tabular-nums">{Math.round(day.tempMaxF)}°</span>
+          <span className="tabular-nums">{Math.round(day.tempMaxF)}&deg;</span>
         </li>
       ))}
     </ol>
