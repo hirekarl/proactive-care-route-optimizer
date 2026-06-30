@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { nearestLandingFloor } from "./landingFloors";
 import { landingScrollState } from "./landingScrollState";
 
+const DEFAULT_BG_VOLUME = 0.55;
+const DUCKED_BG_VOLUME = 0.18;
+
 const FLOOR_NARRATIONS: Record<number, string> = {
   0: "Every day, tens of thousands of New York City seniors rely on home-delivered care. And every day, their caregivers navigate a city where elevators fail without warning — leaving workers stranded and seniors without food. This tool changes that.",
   6: "The Dashboard surfaces every active risk in one place: at-risk stops, complaints by borough, heat advisories. Everything a dispatcher needs to act before a worker reaches the lobby.",
@@ -19,14 +22,23 @@ export function AudioOverlay() {
   const [offset, setOffset] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const fadeTarget = useRef<number>(0.25);
+  const fadeTarget = useRef<number>(DEFAULT_BG_VOLUME);
   const lastSpokenBeat = useRef<number | null>(null);
 
   // Initialize background music
   useEffect(() => {
-    const audio = new Audio("/RiseUp.mp3");
+    const audioUrl =
+      typeof window !== "undefined" ? window.location.origin + "/RiseUp.mp3" : "/RiseUp.mp3";
+
+    const audio = new Audio(audioUrl);
     audio.loop = true;
+    audio.preload = "auto";
     audio.volume = 0.0;
+
+    audio.onerror = (e) => {
+      console.error("Audio element failed to load source:", audioUrl, e);
+    };
+
     audioRef.current = audio;
 
     // Load speech voices
@@ -61,8 +73,8 @@ export function AudioOverlay() {
         const current = audioRef.current.volume;
         const target = fadeTarget.current;
         const diff = target - current;
-        if (Math.abs(diff) > 0.01) {
-          audioRef.current.volume = current + Math.sign(diff) * 0.012;
+        if (Math.abs(diff) > 0.005) {
+          audioRef.current.volume = current + Math.sign(diff) * 0.015;
         } else {
           audioRef.current.volume = target;
         }
@@ -81,12 +93,15 @@ export function AudioOverlay() {
 
   // Speak beat text
   const speakText = (text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      fadeTarget.current = DEFAULT_BG_VOLUME;
+      return;
+    }
 
     window.speechSynthesis.cancel();
 
     // Duck backing track
-    fadeTarget.current = 0.05;
+    fadeTarget.current = DUCKED_BG_VOLUME;
     setIsSpeaking(true);
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -108,14 +123,14 @@ export function AudioOverlay() {
 
     utterance.onend = () => {
       if (!window.speechSynthesis.speaking) {
-        fadeTarget.current = 0.25;
+        fadeTarget.current = DEFAULT_BG_VOLUME;
         setIsSpeaking(false);
       }
     };
 
     utterance.onerror = (e) => {
       if (e.error !== "interrupted" && !window.speechSynthesis.speaking) {
-        fadeTarget.current = 0.25;
+        fadeTarget.current = DEFAULT_BG_VOLUME;
         setIsSpeaking(false);
       }
     };
@@ -154,7 +169,7 @@ export function AudioOverlay() {
     } else {
       // Play
       setIsPlaying(true);
-      fadeTarget.current = 0.25;
+      fadeTarget.current = DEFAULT_BG_VOLUME;
       audioRef.current.volume = 0.0;
       audioRef.current.play().catch((err) => {
         console.warn("Audio autoplay blocked or failed:", err);
