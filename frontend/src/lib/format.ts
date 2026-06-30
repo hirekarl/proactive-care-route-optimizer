@@ -29,20 +29,20 @@ export const severityStyles: Record<
 > = {
   critical: {
     label: "Critical",
-    badge: "bg-red-100 text-red-800 ring-red-600/20",
-    dot: "bg-red-500",
-    row: "border-l-red-500",
+    badge: "bg-rose-300/12 text-rose-100 ring-rose-200/25",
+    dot: "bg-rose-300 shadow-[0_0_12px_rgba(253,164,175,0.8)]",
+    row: "border-l-4 border-l-rose-300/80",
   },
   warning: {
     label: "Warning",
-    badge: "bg-amber-100 text-amber-800 ring-amber-600/20",
-    dot: "bg-amber-500",
-    row: "border-l-amber-500",
+    badge: "bg-fuchsia-300/12 text-fuchsia-100 ring-fuchsia-200/25",
+    dot: "bg-fuchsia-300 shadow-[0_0_12px_rgba(240,171,252,0.78)]",
+    row: "border-l-4 border-l-fuchsia-300/75",
   },
   watch: {
     label: "Watch",
-    badge: "bg-sky-100 text-sky-800 ring-sky-600/20",
-    dot: "bg-sky-500",
-    row: "border-l-sky-500",
+    badge: "bg-sky-300/12 text-sky-100 ring-sky-200/25",
+    dot: "bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.72)]",
+    row: "border-l-4 border-l-sky-300/70",
   },
 };

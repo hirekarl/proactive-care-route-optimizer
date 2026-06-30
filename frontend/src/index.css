@@ -26,6 +26,76 @@ body {
   font: inherit;
 }
 
+.neon-map-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 84%, rgba(244, 63, 94, 0.24), transparent 28%),
+    radial-gradient(circle at 50% 48%, rgba(236, 72, 153, 0.1), transparent 46%), #000000;
+  box-shadow:
+    0 28px 100px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.neon-map-frame::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 18%),
+    radial-gradient(circle at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.88) 100%);
+}
+
+.neon-map {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: min(100%, 47rem);
+  height: 100%;
+  padding: clamp(0.75rem, 2vw, 1.5rem);
+  filter: drop-shadow(0 28px 42px rgba(0, 0, 0, 0.75));
+}
+
+.neon-map__title text:first-child {
+  font-size: 4.65rem;
+  font-weight: 900;
+  letter-spacing: 0.28em;
+}
+
+.neon-map__subtitle {
+  fill: rgba(255, 255, 255, 0.86);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.72em;
+}
+
+.neon-map__coords {
+  fill: rgba(255, 255, 255, 0.54);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+}
+
+.neon-map__marker {
+  animation: neon-marker-pulse 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes neon-marker-pulse {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
 /* ---------- 3D landing page ---------- */
 
 .landing {
@@ -84,6 +154,7 @@ body {
   display: block;
   width: 1.7rem;
   height: 1.7rem;
+  filter: invert(1) saturate(0) brightness(1.16);
   object-fit: contain;
 }
 
@@ -132,6 +203,7 @@ body {
   width: clamp(3rem, 5vw, 4.35rem);
   height: clamp(3rem, 5vw, 4.35rem);
   margin-bottom: 1rem;
+  filter: invert(1) saturate(0) brightness(1.16) drop-shadow(0 18px 34px rgba(255, 255, 255, 0.3));
   object-fit: contain;
 }
 

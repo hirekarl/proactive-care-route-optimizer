@@ -1,6 +1,7 @@
 import { api } from "../api/client";
 import { AtRiskStopsTable } from "../components/dashboard/AtRiskStopsTable";
 import { BoroughRiskChart } from "../components/dashboard/BoroughRiskChart";
+import { ElevatorAdvocatePanel } from "../components/dashboard/ElevatorAdvocatePanel";
 import { HeatAdvisoryBanner } from "../components/dashboard/HeatAdvisoryBanner";
 import { OutagesTrendChart } from "../components/dashboard/OutagesTrendChart";
 import { Header } from "../components/layout/Header";
@@ -20,7 +21,7 @@ export function DashboardPage() {
         subtitle="Elevator-outage risk across active senior-care routes"
         lastIngestAt={summary.data?.lastIngestAt}
       />
-      <div className="flex flex-col gap-6 p-6">
+      <div className="relative z-10 flex flex-col gap-6 p-6">
         {summary.loading || summary.error ? (
           <StateBlock loading={summary.loading} error={summary.error} />
         ) : (
@@ -53,12 +54,19 @@ export function DashboardPage() {
                 />
                 <StatCard
                   label="Heat risk multiplier"
-                  value={`${summary.data.heatRiskMultiplier.toFixed(2)}×`}
+                  value={
+                    <>
+                      {summary.data.heatRiskMultiplier.toFixed(2)}
+                      &times;
+                    </>
+                  }
                   hint="Complaint volume vs. baseline"
                   tone="info"
                   icon={<DotIcon />}
                 />
               </div>
+
+              <ElevatorAdvocatePanel />
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <Card title="Risk by borough" subtitle="Outages, at-risk stops, chronic offenders">
@@ -73,7 +81,7 @@ export function DashboardPage() {
         )}
 
         <Card
-          title="At-risk stops — action queue"
+          title="At-risk stops - action queue"
           subtitle="Screened against the live outage feed before dispatch"
         >
           {atRisk.loading || atRisk.error || !atRisk.data?.length ? (
@@ -81,7 +89,7 @@ export function DashboardPage() {
               loading={atRisk.loading}
               error={atRisk.error}
               empty={!atRisk.loading && !atRisk.error && !atRisk.data?.length}
-              emptyLabel="No at-risk stops — all routes clear."
+              emptyLabel="No at-risk stops - all routes clear."
             />
           ) : (
             <AtRiskStopsTable stops={atRisk.data} />
