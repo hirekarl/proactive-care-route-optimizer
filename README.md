@@ -391,7 +391,6 @@ The backend requires these env vars (Render generates/injects most of them via t
 | `DJANGO_DEBUG` | Set to `False` in `render.yaml` |
 | `ALLOWED_HOSTS` | Set to `.onrender.com` in `render.yaml` |
 | `SOCRATA_APP_TOKEN` | Optional; raises NYC Open Data rate limits |
-| `DFTA_PROVIDER_DATASET_ID` | Optional; Socrata resource ID for DFTA provider directory |
 
 ---
 
