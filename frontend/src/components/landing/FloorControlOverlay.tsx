@@ -8,18 +8,33 @@ interface FloorControlOverlayProps {
   previewing?: boolean;
 }
 
+type Direction = "up" | "down" | "idle";
+
 export function FloorControlOverlay({ previewing = false }: FloorControlOverlayProps) {
   const [offset, setOffset] = useState(landingScrollState.offset);
+  const [direction, setDirection] = useState<Direction>("idle");
 
   useEffect(() => {
     let frameId = 0;
     let lastOffset = landingScrollState.offset;
+    let lastChangeAt = 0;
+    let currentDirection: Direction = "idle";
 
-    const syncOffset = () => {
+    const syncOffset = (now: number) => {
       const nextOffset = landingScrollState.offset;
-      if (Math.abs(nextOffset - lastOffset) > 0.001) {
+      const delta = nextOffset - lastOffset;
+      if (Math.abs(delta) > 0.001) {
         lastOffset = nextOffset;
         setOffset(nextOffset);
+        const nextDirection: Direction = delta > 0 ? "down" : "up";
+        if (nextDirection !== currentDirection) {
+          currentDirection = nextDirection;
+          setDirection(nextDirection);
+        }
+        lastChangeAt = now;
+      } else if (currentDirection !== "idle" && now - lastChangeAt > 320) {
+        currentDirection = "idle";
+        setDirection("idle");
       }
       frameId = window.requestAnimationFrame(syncOffset);
     };
@@ -56,9 +71,11 @@ export function FloorControlOverlay({ previewing = false }: FloorControlOverlayP
         } as CSSProperties
       }
     >
-      <div className="landing-floor-panel__screen">
+      <div className="landing-floor-panel__screen" data-direction={direction}>
         <span>{activeFloor.floor}F</span>
-        <strong>UP</strong>
+        <strong className="landing-floor-panel__direction" aria-label={`Elevator ${direction}`}>
+          {direction === "down" ? "▼ DOWN" : direction === "up" ? "▲ UP" : "—"}
+        </strong>
       </div>
 
       <div className="landing-floor-panel__rows">
