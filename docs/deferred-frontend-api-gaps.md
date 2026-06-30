@@ -68,14 +68,13 @@ as `row.get("address") or house_number + " " + street_name` during
 
 ---
 
-## 8. `Provider.seniorsServed` — always `0`
+## 8. `Provider.seniorsServed` — ~~always `0`~~ **REMOVED**
 
-**Stubbed in:** `api/serializers.py` (`ProviderSerializer`)
-**Why:** "Seniors served" is not a field in the DFTA provider dataset on
-NYC Open Data. It would need to come from a separate DFTA data export or
-a manually-maintained lookup table.
-**To close:** Determine with Mitra whether this field is available in
-any source; if not, consider removing it from the `Provider` type.
+**Removed by:** `refactor: remove seniorsServed field from codebase` (Mitra, `Frontend` branch).
+No machine-readable source exists in the DFTA Open Data catalog. The field was dropped
+entirely from `Provider` type (`frontend/src/types/index.ts`), mock data, `OutageMap`
+popup, `ProvidersPage` borough breakdown, `ProviderSerializer`, and the stub test in
+`test_risk_scores.py`. If a data source is confirmed later, re-add as a real field.
 
 ---
 
