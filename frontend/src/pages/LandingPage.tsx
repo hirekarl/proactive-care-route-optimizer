@@ -133,11 +133,7 @@ export function LandingPage() {
       <EnterButtonOverlay onEnter={enterDashboard} />
 
       {selectedTab !== null && previewOpen && (
-        <DashboardModal
-          activeTab={selectedTab}
-          onClose={closePreview}
-          onSelectTab={setSelectedTab}
-        />
+        <DashboardModal activeTab={selectedTab} onClose={closePreview} />
       )}
     </div>
   );
@@ -146,10 +142,9 @@ export function LandingPage() {
 interface DashboardModalProps {
   activeTab: number;
   onClose: () => void;
-  onSelectTab: (tabIndex: number) => void;
 }
 
-function DashboardModal({ activeTab, onClose, onSelectTab }: DashboardModalProps) {
+function DashboardModal({ activeTab, onClose }: DashboardModalProps) {
   const navigate = useNavigate();
   const active = previewTabs.find((tab) => tab.tabIndex === activeTab) ?? previewTabs[0];
   const ActivePanel = active.panel;
@@ -175,53 +170,25 @@ function DashboardModal({ activeTab, onClose, onSelectTab }: DashboardModalProps
           </svg>
         </button>
 
-        <div className="landing-modal__tabs" role="tablist" aria-label="Dashboard tabs">
-          <div className="landing-modal__tabs-heading">
-            <span>Dashboard tabs</span>
-            <strong>{active.value}</strong>
-          </div>
-          {previewTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = tab.tabIndex === active.tabIndex;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className="landing-modal__tab"
-                data-active={isActive}
-                onClick={() => onSelectTab(tab.tabIndex)}
-                style={{ "--accent": tab.hue } as CSSProperties}
-              >
-                <span className="landing-modal__tab-icon">
-                  <Icon />
-                </span>
-                <span>
-                  <strong>{tab.eyebrow}</strong>
-                  <small>{tab.label}</small>
-                </span>
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            className="landing-modal__full-button"
-            onClick={() => navigate(active.path)}
-          >
-            Open full page
-          </button>
-        </div>
-
         <div className="landing-modal__body">
           <div
             className="landing-modal__summary"
             style={{ "--accent": active.hue } as CSSProperties}
           >
-            <p>{active.eyebrow}</p>
-            <h2>{active.label}</h2>
-            <span>{active.detail}</span>
+            <div className="flex items-start justify-between pr-14">
+              <div>
+                <p>{active.eyebrow}</p>
+                <h2 className="text-glow">{active.label}</h2>
+              </div>
+              <button
+                type="button"
+                className="cursor-pointer rounded-full border border-white/10 bg-white/[0.06] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_0_12px_rgba(255,255,255,0.05)] transition-all hover:bg-white/10"
+                onClick={() => navigate(active.path)}
+              >
+                Open full page
+              </button>
+            </div>
+            <span className="mt-1 block">{active.detail}</span>
           </div>
           <div className="landing-modal__content">
             <ActivePanel />
