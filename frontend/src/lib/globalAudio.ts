@@ -44,7 +44,6 @@ export const initGlobalAudio = () => {
   const origin = window.location.origin;
   const bgMusicUrl = origin + "/RiseUp.mp3";
 
-  // Setup background ambient audio
   const bgAudio = new Audio(bgMusicUrl);
   bgAudio.loop = true;
   bgAudio.preload = "auto";
@@ -55,7 +54,6 @@ export const initGlobalAudio = () => {
   };
   globalAudio.bgAudio = bgAudio;
 
-  // Setup voice narration audio
   const narrationAudio = new Audio();
   narrationAudio.preload = "auto";
   narrationAudio.volume = 1.0;
@@ -112,20 +110,16 @@ export const playNarrationBeat = (beatIndex: number) => {
   initGlobalAudio();
   if (!globalAudio.narrationAudio) return;
 
-  // Stop current narration
   globalAudio.narrationAudio.pause();
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const narrationUrl = `${origin}/landing-page-beat${beatIndex}.m4a`;
 
-  // Load and play new track
   globalAudio.narrationAudio.src = narrationUrl;
   globalAudio.narrationAudio.load();
 
   // Duck the background music immediately
   globalAudio.fadeTarget = DUCKED_BG_VOLUME;
-  globalAudio.isSpeaking = true;
-  window.dispatchEvent(new Event("global-audio-change"));
 
   globalAudio.narrationAudio.play().catch((err) => {
     console.warn("Narration playback blocked or failed:", err);
