@@ -31,7 +31,7 @@ export function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                 isActive
-                  ? "via-fuchsia-200/18 ring-white/12 bg-gradient-to-r from-fuchsia-300/35 to-white/5 text-white shadow-[0_0_34px_rgba(232,121,249,0.22)] ring-1"
+                  ? "via-fuchsia-200/18 bg-gradient-to-r from-fuchsia-300/35 to-white/5 text-white shadow-[0_0_34px_rgba(232,121,249,0.22)]"
                   : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
               }`
             }
