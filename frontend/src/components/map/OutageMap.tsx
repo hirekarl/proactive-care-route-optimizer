@@ -49,7 +49,7 @@ export function OutageMap({
 
   return (
     <div
-      className="leaflet-map-wrapper overflow-hidden rounded-xl border border-fuchsia-500/20 shadow-[0_0_20px_rgba(240,171,252,0.15)]"
+      className="leaflet-map-wrapper overflow-hidden rounded-xl border border-pink-500/50 shadow-[0_0_15px_rgba(236,72,153,0.5),_0_0_30px_rgba(236,72,153,0.25),_inset_0_0_10px_rgba(236,72,153,0.15)]"
       style={{ height, width: "100%" }}
     >
       <MapContainer
