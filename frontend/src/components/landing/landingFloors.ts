@@ -25,7 +25,7 @@ export const ELEVATOR_BASE_Y = -4.65;
 export const landingFloors: LandingFloor[] = [
   {
     ...landingFacts[0],
-    floor: 1,
+    floor: 6,
     kind: "tab",
     panelLabel: "Dashboard",
     position: [3.2, 3.2, 2.2],
@@ -33,7 +33,7 @@ export const landingFloors: LandingFloor[] = [
   },
   {
     ...landingFacts[1],
-    floor: 2,
+    floor: 5,
     kind: "tab",
     panelLabel: "Outage Map",
     position: [-3.15, 2.0, 1.35],
@@ -41,7 +41,7 @@ export const landingFloors: LandingFloor[] = [
   },
   {
     ...landingFacts[2],
-    floor: 3,
+    floor: 4,
     kind: "tab",
     panelLabel: "DOB Feed",
     position: [3.15, 0.78, -1.75],
@@ -49,14 +49,14 @@ export const landingFloors: LandingFloor[] = [
   },
   {
     ...landingFacts[3],
-    floor: 4,
+    floor: 3,
     kind: "tab",
     panelLabel: "Providers",
     position: [-2.85, -0.58, 2.25],
     scrollOffset: 0.58,
   },
   {
-    floor: 5,
+    floor: 2,
     id: "advocate",
     eyebrow: "Elevator Advocate",
     value: "NYC Advocacy",
@@ -71,7 +71,7 @@ export const landingFloors: LandingFloor[] = [
     scrollOffset: 0.74,
   },
   {
-    floor: 6,
+    floor: 1,
     id: "eda",
     eyebrow: "Senior Care EDA",
     value: "Risk Explorer",
@@ -119,7 +119,7 @@ export function nearestLandingFloor(scrollOffset: number): LandingFloor {
 }
 
 function floorCabinY(floor: number): number {
-  const progress = (floor - 1) / (landingFloors.length - 1);
+  const progress = (landingFloors.length - floor) / (landingFloors.length - 1);
   return lerp(CABIN_TOP_Y, CABIN_LANDING_Y, progress);
 }
 

@@ -29,7 +29,7 @@ export function FloorControlOverlay({ previewing = false }: FloorControlOverlayP
   }, []);
 
   const activeFloor = useMemo(() => nearestLandingFloor(offset), [offset]);
-  const panelFloors = useMemo(() => [...landingFloors].reverse(), []);
+  const panelFloors = useMemo(() => [...landingFloors], []);
   const panelOpacity = Math.min(1, Math.max(0, (offset - 0.035) / 0.055));
   const visibleOpacity = previewing ? panelOpacity * 0.36 : panelOpacity;
 
