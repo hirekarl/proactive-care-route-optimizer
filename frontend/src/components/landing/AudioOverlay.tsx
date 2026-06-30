@@ -6,51 +6,58 @@ import { landingScrollState } from "./landingScrollState";
 const DEFAULT_BG_VOLUME = 0.55;
 const DUCKED_BG_VOLUME = 0.18;
 
-const FLOOR_NARRATIONS: Record<number, string> = {
-  0: "Every day, tens of thousands of New York City seniors rely on home-delivered care. And every day, their caregivers navigate a city where elevators fail without warning — leaving workers stranded and seniors without food. This tool changes that.",
-  6: "The Dashboard surfaces every active risk in one place: at-risk stops, complaints by borough, heat advisories. Everything a dispatcher needs to act before a worker reaches the lobby.",
-  5: "The Outage Map lays live elevator complaints over active senior-care routes. Each outage carries a half-mile proximity ring — so dispatchers can see at a glance which stops are inside the danger zone.",
-  4: "The Complaints Feed pulls live from NYC's Department of Buildings open data — filtered and flagged for what matters most: chronic offenders, and single-elevator buildings where any outage means total inaccessibility.",
-  3: "The Providers Directory maps every DFTA-contracted care provider in the five boroughs — location, client count, assigned routes. When a building goes dark, dispatchers can find the nearest available provider in seconds.",
-  2: "Elevator Advocate is built for tenants, organizers, and care teams tracking elevator accountability from the outside. If that's your work, this is where to go.",
-  1: "The Senior-Care Exploratory Analysis is the research behind this tool — the 79% proximity rate, the heat-week complaint spike, the Bronx concentration, the 135 single-elevator buildings. To understand where the numbers come from, start here.",
-};
-
 export function AudioOverlay() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [offset, setOffset] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
   const fadeTarget = useRef<number>(DEFAULT_BG_VOLUME);
   const lastSpokenBeat = useRef<number | null>(null);
 
-  // Initialize background music
+  // Initialize background music and pre-recorded narration audio
   useEffect(() => {
-    const audioUrl =
-      typeof window !== "undefined" ? window.location.origin + "/RiseUp.mp3" : "/RiseUp.mp3";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const bgMusicUrl = origin + "/RiseUp.mp3";
 
-    const audio = new Audio(audioUrl);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = 0.0;
+    // Setup background ambient audio
+    const bgAudio = new Audio(bgMusicUrl);
+    bgAudio.loop = true;
+    bgAudio.preload = "auto";
+    bgAudio.volume = 0.0;
 
-    audio.onerror = (e) => {
-      console.error("Audio element failed to load source:", audioUrl, e);
+    bgAudio.onerror = (e) => {
+      console.error("Background music failed to load source:", bgMusicUrl, e);
+    };
+    audioRef.current = bgAudio;
+
+    // Setup voice narration audio
+    const narrationAudio = new Audio();
+    narrationAudio.preload = "auto";
+    narrationAudio.volume = 1.0;
+
+    narrationAudio.onplay = () => {
+      fadeTarget.current = DUCKED_BG_VOLUME;
+      setIsSpeaking(true);
     };
 
-    audioRef.current = audio;
+    narrationAudio.onended = () => {
+      fadeTarget.current = DEFAULT_BG_VOLUME;
+      setIsSpeaking(false);
+    };
 
-    // Load speech voices
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-    }
+    narrationAudio.onerror = (e) => {
+      console.error("Narration playback error or source missing:", e);
+      fadeTarget.current = DEFAULT_BG_VOLUME;
+      setIsSpeaking(false);
+    };
+
+    narrationAudioRef.current = narrationAudio;
 
     return () => {
-      audio.pause();
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      bgAudio.pause();
+      narrationAudio.pause();
     };
   }, []);
 
@@ -91,51 +98,29 @@ export function AudioOverlay() {
     return nearestLandingFloor(offset).floor; // Beat 1-6
   }, [offset]);
 
-  // Speak beat text
-  const speakText = (text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      return;
-    }
+  // Play pre-recorded narration beat and duck background music
+  const playNarrationBeat = (beatIndex: number) => {
+    if (!narrationAudioRef.current) return;
 
-    window.speechSynthesis.cancel();
+    // Stop current narration
+    narrationAudioRef.current.pause();
 
-    // Duck backing track
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const narrationUrl = `${origin}/landing-page-beat${beatIndex}.m4a`;
+
+    // Load and play new track
+    narrationAudioRef.current.src = narrationUrl;
+    narrationAudioRef.current.load();
+
+    // Duck the background music immediately
     fadeTarget.current = DUCKED_BG_VOLUME;
     setIsSpeaking(true);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-
-    // Try to find a high quality natural English voice
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice =
-      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural")) ||
-      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Google")) ||
-      voices.find((v) => v.lang.startsWith("en")) ||
-      voices[0];
-
-    if (englishVoice) {
-      utterance.voice = englishVoice;
-    }
-
-    utterance.rate = 0.95;
-    utterance.volume = 1.0;
-
-    utterance.onend = () => {
-      if (!window.speechSynthesis.speaking) {
-        fadeTarget.current = DEFAULT_BG_VOLUME;
-        setIsSpeaking(false);
-      }
-    };
-
-    utterance.onerror = (e) => {
-      if (e.error !== "interrupted" && !window.speechSynthesis.speaking) {
-        fadeTarget.current = DEFAULT_BG_VOLUME;
-        setIsSpeaking(false);
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
+    narrationAudioRef.current.play().catch((err) => {
+      console.warn("Narration playback blocked or failed:", err);
+      fadeTarget.current = DEFAULT_BG_VOLUME;
+      setIsSpeaking(false);
+    });
   };
 
   // Trigger narration beat changes
@@ -147,38 +132,31 @@ export function AudioOverlay() {
 
     if (lastSpokenBeat.current !== activeBeat) {
       lastSpokenBeat.current = activeBeat;
-      const text = FLOOR_NARRATIONS[activeBeat];
-      if (text) {
-        speakText(text);
-      }
+      playNarrationBeat(activeBeat);
     }
   }, [activeBeat, isPlaying]);
 
   // Handle play/mute toggle click
   const toggleAudio = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !narrationAudioRef.current) return;
 
     if (isPlaying) {
-      // Pause
+      // Pause all audio
       audioRef.current.pause();
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      narrationAudioRef.current.pause();
       setIsSpeaking(false);
       setIsPlaying(false);
     } else {
-      // Play
+      // Start background music
       setIsPlaying(true);
       fadeTarget.current = DEFAULT_BG_VOLUME;
       audioRef.current.volume = 0.0;
       audioRef.current.play().catch((err) => {
-        console.warn("Audio autoplay blocked or failed:", err);
+        console.warn("Background music autoplay blocked or failed:", err);
       });
-      // Speak current floor beat immediately
-      const text = FLOOR_NARRATIONS[activeBeat];
-      if (text) {
-        speakText(text);
-      }
+
+      // Play current active floor beat narration
+      playNarrationBeat(activeBeat);
     }
   };
 
