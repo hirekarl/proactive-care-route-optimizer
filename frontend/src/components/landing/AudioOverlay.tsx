@@ -1,63 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  DEFAULT_BG_VOLUME,
+  globalAudio,
+  initGlobalAudio,
+  playNarrationBeat,
+  toggleGlobalAudio,
+} from "../../lib/globalAudio";
 import { nearestLandingFloor } from "./landingFloors";
 import { landingScrollState } from "./landingScrollState";
-
-const DEFAULT_BG_VOLUME = 0.55;
-const DUCKED_BG_VOLUME = 0.18;
 
 export function AudioOverlay() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [offset, setOffset] = useState(0);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const fadeTarget = useRef<number>(DEFAULT_BG_VOLUME);
   const lastSpokenBeat = useRef<number | null>(null);
 
-  // Initialize background music and pre-recorded narration audio
+  // Initialize and sync global audio state
   useEffect(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const bgMusicUrl = origin + "/RiseUp.mp3";
+    initGlobalAudio();
+    setIsPlaying(globalAudio.isPlaying);
+    setIsSpeaking(globalAudio.isSpeaking);
 
-    // Setup background ambient audio
-    const bgAudio = new Audio(bgMusicUrl);
-    bgAudio.loop = true;
-    bgAudio.preload = "auto";
-    bgAudio.volume = 0.0;
-
-    bgAudio.onerror = (e) => {
-      console.error("Background music failed to load source:", bgMusicUrl, e);
-    };
-    audioRef.current = bgAudio;
-
-    // Setup voice narration audio
-    const narrationAudio = new Audio();
-    narrationAudio.preload = "auto";
-    narrationAudio.volume = 1.0;
-
-    narrationAudio.onplay = () => {
-      fadeTarget.current = DUCKED_BG_VOLUME;
-      setIsSpeaking(true);
+    const handleSync = () => {
+      setIsPlaying(globalAudio.isPlaying);
+      setIsSpeaking(globalAudio.isSpeaking);
     };
 
-    narrationAudio.onended = () => {
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      setIsSpeaking(false);
-    };
-
-    narrationAudio.onerror = (e) => {
-      console.error("Narration playback error or source missing:", e);
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      setIsSpeaking(false);
-    };
-
-    narrationAudioRef.current = narrationAudio;
-
+    window.addEventListener("global-audio-change", handleSync);
     return () => {
-      bgAudio.pause();
-      narrationAudio.pause();
+      window.removeEventListener("global-audio-change", handleSync);
+
+      // Stop narration when leaving the landing page, but let background music keep playing!
+      if (globalAudio.narrationAudio) {
+        globalAudio.narrationAudio.pause();
+      }
+      globalAudio.isSpeaking = false;
+      globalAudio.fadeTarget = DEFAULT_BG_VOLUME;
+      window.dispatchEvent(new Event("global-audio-change"));
     };
   }, []);
 
@@ -71,26 +52,6 @@ export function AudioOverlay() {
     frameId = requestAnimationFrame(syncOffset);
     return () => cancelAnimationFrame(frameId);
   }, []);
-
-  // Smooth background music volume interpolation (audio ducking)
-  useEffect(() => {
-    let frameId = 0;
-    const adjustVolume = () => {
-      if (audioRef.current && isPlaying) {
-        const current = audioRef.current.volume;
-        const target = fadeTarget.current;
-        const diff = target - current;
-        if (Math.abs(diff) > 0.005) {
-          audioRef.current.volume = current + Math.sign(diff) * 0.015;
-        } else {
-          audioRef.current.volume = target;
-        }
-      }
-      frameId = requestAnimationFrame(adjustVolume);
-    };
-    frameId = requestAnimationFrame(adjustVolume);
-    return () => cancelAnimationFrame(frameId);
-  }, [isPlaying]);
 
   // Determine active floor (0 for Hero, 1-6 for floors)
   const activeFloor = useMemo(() => {
@@ -118,31 +79,6 @@ export function AudioOverlay() {
     return mapping[activeFloor] ?? 0;
   }, [activeFloor]);
 
-  // Play pre-recorded narration beat and duck background music
-  const playNarrationBeat = (beatIndex: number) => {
-    if (!narrationAudioRef.current) return;
-
-    // Stop current narration
-    narrationAudioRef.current.pause();
-
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const narrationUrl = `${origin}/landing-page-beat${beatIndex}.m4a`;
-
-    // Load and play new track
-    narrationAudioRef.current.src = narrationUrl;
-    narrationAudioRef.current.load();
-
-    // Duck the background music immediately
-    fadeTarget.current = DUCKED_BG_VOLUME;
-    setIsSpeaking(true);
-
-    narrationAudioRef.current.play().catch((err) => {
-      console.warn("Narration playback blocked or failed:", err);
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      setIsSpeaking(false);
-    });
-  };
-
   // Trigger narration beat changes
   useEffect(() => {
     if (!isPlaying) {
@@ -156,34 +92,10 @@ export function AudioOverlay() {
     }
   }, [activeBeatIndex, isPlaying]);
 
-  // Handle play/mute toggle click
-  const toggleAudio = () => {
-    if (!audioRef.current || !narrationAudioRef.current) return;
-
-    if (isPlaying) {
-      // Pause all audio
-      audioRef.current.pause();
-      narrationAudioRef.current.pause();
-      setIsSpeaking(false);
-      setIsPlaying(false);
-    } else {
-      // Start background music
-      setIsPlaying(true);
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      audioRef.current.volume = 0.0;
-      audioRef.current.play().catch((err) => {
-        console.warn("Background music autoplay blocked or failed:", err);
-      });
-
-      // Play current active floor beat narration
-      playNarrationBeat(activeBeatIndex);
-    }
-  };
-
   return (
     <div className="landing-audio-widget">
       <button
-        onClick={toggleAudio}
+        onClick={toggleGlobalAudio}
         type="button"
         className="landing-audio-widget__btn"
         data-muted={!isPlaying}

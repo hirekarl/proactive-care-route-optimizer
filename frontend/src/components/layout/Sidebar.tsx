@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
+
+import { globalAudio, initGlobalAudio, toggleGlobalAudio } from "../../lib/globalAudio";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", end: true, icon: GridIcon },
@@ -41,10 +44,64 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="border-t border-white/10 px-4 py-3">
+        <AudioSidebarToggle />
+      </div>
       <div className="border-t border-white/10 px-5 py-4 text-xs text-slate-500">
         NYC DFTA · Proactive Dispatch
       </div>
     </aside>
+  );
+}
+
+function AudioSidebarToggle() {
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    initGlobalAudio();
+    setIsPlaying(globalAudio.isPlaying);
+
+    const handleSync = () => {
+      setIsPlaying(globalAudio.isPlaying);
+    };
+
+    window.addEventListener("global-audio-change", handleSync);
+    return () => {
+      window.removeEventListener("global-audio-change", handleSync);
+    };
+  }, []);
+
+  return (
+    <button
+      onClick={toggleGlobalAudio}
+      type="button"
+      className="flex w-full cursor-pointer select-none items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+    >
+      <span className="flex h-5 w-5 items-center justify-center rounded bg-white/[0.06] text-slate-300">
+        {isPlaying ? (
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-pink-500" />
+          </span>
+        ) : (
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+          </svg>
+        )}
+      </span>
+      <span>{isPlaying ? "Ambient Audio: ON" : "Ambient Audio: OFF"}</span>
+    </button>
   );
 }
 
