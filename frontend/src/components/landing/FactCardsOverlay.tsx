@@ -112,8 +112,7 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
       <div className="landing__orbit-path" aria-hidden="true" />
       {cards.map(({ depth, floor, focus, orbitReveal, placement, rotateX, rotateY, rotateZ }) => {
         const active = focus > 0.42;
-        const cardOpacity =
-          orbitReveal * Math.min(0.98, Math.max(0.08, 0.05 + depth * 0.08 + focus * 0.86));
+        const cardOpacity = orbitReveal * focus * focus;
         const cardScale = 0.74 + focus * 0.28;
         const cardY = (1 - focus) * 14;
         const orbitDepth = Math.round(8 + depth * 4 + focus * 12);
