@@ -994,3 +994,45 @@ body {
 .enter-button__chev {
   font-size: 1.1rem;
 }
+
+/* Custom Leaflet Dark Glass Popups */
+.leaflet-popup-content-wrapper {
+  background: rgba(15, 23, 42, 0.9) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(236, 72, 153, 0.3) !important;
+  box-shadow:
+    0 10px 30px -10px rgba(0, 0, 0, 0.7),
+    0 0 15px rgba(236, 72, 153, 0.1) !important;
+  border-radius: 0.75rem !important;
+  color: #f8fafc !important;
+  padding: 0.25rem !important;
+}
+
+.leaflet-popup-content {
+  margin: 0.75rem 1rem !important;
+  line-height: 1.5 !important;
+  color: #cbd5e1 !important;
+  font-family: inherit !important;
+}
+
+.leaflet-popup-content h3 {
+  font-weight: 700 !important;
+  margin: 0 !important;
+}
+
+.leaflet-popup-tip {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 1px solid rgba(236, 72, 153, 0.3) !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  padding: 8px 12px 0 0 !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #f43f5e !important;
+  background: transparent !important;
+}
