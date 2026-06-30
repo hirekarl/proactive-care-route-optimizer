@@ -800,7 +800,24 @@ function CallPanel({ buttonMatRef }: CallPanelProps) {
   return (
     <group position={[-halfW - 0.03, 1.2, halfD + 0.08]}>
       <MetalBox position={[0, 0, 0]} args={[0.18, 0.42, 0.06]} color="#0a0a0d" />
-      <mesh position={[0, 0.04, 0.04]}>
+      <mesh
+        position={[0, 0.04, 0.04]}
+        onPointerOver={() => {
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "auto";
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (landingScrollState.scrollElement) {
+            landingScrollState.scrollElement.scrollTo({
+              top: 0,
+              behavior: "smooth",
+            });
+          }
+        }}
+      >
         <boxGeometry args={[0.12, 0.12, 0.022]} />
         <meshStandardMaterial
           ref={buttonMatRef}
