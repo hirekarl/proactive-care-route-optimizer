@@ -17,6 +17,7 @@ import {
 } from "three";
 
 import { CABIN_TOP_Y, cabinLocalYAt } from "./landingFloors";
+import { landingScrollState } from "./landingScrollState";
 
 type Vec3 = [number, number, number];
 
@@ -41,21 +42,34 @@ export function Elevator3D() {
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
+
+    // Automatically open doors when cabin reaches the bottom floor (scroll offset > 0.975)
+    const isAtBottom = scroll.offset > 0.975;
+    if (isAtBottom !== doorsOpen) {
+      setDoorsOpen(isAtBottom);
+    }
+
     const targetOpen = doorsOpen ? 1.12 : 0;
+    let currentOpen = 0;
     if (leftDoorRef.current) {
       leftDoorRef.current.rotation.y = MathUtils.lerp(
         leftDoorRef.current.rotation.y,
         targetOpen,
-        0.12
+        0.08 // slightly slower majestic door opening
       );
+      currentOpen = leftDoorRef.current.rotation.y;
     }
     if (rightDoorRef.current) {
       rightDoorRef.current.rotation.y = MathUtils.lerp(
         rightDoorRef.current.rotation.y,
         -targetOpen,
-        0.12
+        0.08
       );
     }
+
+    // Share door opening progress globally (value between 0.0 and 1.0)
+    landingScrollState.doorsOpenProgress = Math.max(0, Math.min(1, currentOpen / 1.12));
+
     if (screenMatRef.current) {
       screenMatRef.current.emissiveIntensity = 1.2 + Math.sin(t * 1.1) * 0.18;
     }
