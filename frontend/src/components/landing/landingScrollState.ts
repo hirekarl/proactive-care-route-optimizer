@@ -12,8 +12,10 @@ export const landingScrollState: {
   offset: number;
   dragRotation: number;
   cards: CardProjection[];
+  scrollElement: HTMLElement | null;
 } = {
   offset: 0,
   dragRotation: 0,
   cards: [],
+  scrollElement: null,
 };

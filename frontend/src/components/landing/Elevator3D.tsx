@@ -16,17 +16,14 @@ import {
   SRGBColorSpace,
 } from "three";
 
+import { CABIN_TOP_Y, cabinLocalYAt } from "./landingFloors";
+
 type Vec3 = [number, number, number];
 
 const SHAFT_WIDTH = 2.9;
 const SHAFT_DEPTH = 2.35;
 const SHAFT_HEIGHT = 9.6;
-const FLOOR_COUNT = 4;
-const TRAVEL_Y = 6.75;
-const CABIN_OFFSET_Y = -0.75;
-const CABIN_TOP_Y = TRAVEL_Y + CABIN_OFFSET_Y;
-const CABIN_LANDING_Y = 0.12;
-const CABIN_TRAVEL_END_SCROLL = 0.58;
+const FLOOR_COUNT = 6;
 const BLACK = "#0a0a0e";
 const BLACK_SOFT = "#17171d";
 const PURPLE = "#7c3aed";
@@ -66,12 +63,7 @@ export function Elevator3D() {
       callButtonRef.current.emissiveIntensity = 2.6 + Math.sin(t * 2.2) * 0.75;
     }
     if (cabinRef.current) {
-      const cabinProgress = MathUtils.smoothstep(
-        MathUtils.clamp(scroll.offset / CABIN_TRAVEL_END_SCROLL, 0, 1),
-        0,
-        1
-      );
-      cabinRef.current.position.y = MathUtils.lerp(CABIN_TOP_Y, CABIN_LANDING_Y, cabinProgress);
+      cabinRef.current.position.y = cabinLocalYAt(scroll.offset);
     }
   });
 

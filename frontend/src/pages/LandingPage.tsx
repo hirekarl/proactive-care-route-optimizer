@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import { EnterButtonOverlay } from "../components/landing/EnterButtonOverlay";
 import { FactCardsOverlay } from "../components/landing/FactCardsOverlay";
+import { FloorControlOverlay } from "../components/landing/FloorControlOverlay";
 import { LandingScene } from "../components/landing/LandingScene";
 import { landingFacts } from "../components/landing/landingFacts";
 import type { LandingFact } from "../components/landing/landingFacts";
@@ -36,6 +37,8 @@ export function LandingPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [heroExit, setHeroExit] = useState(0);
   const previewTimer = useRef<number | null>(null);
+  const heroScale = 1 - heroExit * 0.055;
+  const heroY = -heroExit * 36;
 
   useEffect(() => {
     let frameId = 0;
@@ -99,6 +102,7 @@ export function LandingPage() {
       </div>
 
       <FactCardsOverlay onSelectTab={openPreview} previewing={selectedTab !== null} />
+      <FloorControlOverlay previewing={selectedTab !== null} />
 
       <div
         className="landing__hero"
@@ -106,8 +110,9 @@ export function LandingPage() {
         style={
           {
             "--hero-opacity": (1 - heroExit).toFixed(3),
-            "--hero-scale": (1 - heroExit * 0.055).toFixed(3),
-            "--hero-y": `${(-heroExit * 36).toFixed(1)}px`,
+            "--hero-scale": heroScale.toFixed(3),
+            "--hero-y": `${heroY.toFixed(1)}px`,
+            transform: `translate(-50%, -50%) translateY(${heroY.toFixed(1)}px) scale(${heroScale.toFixed(3)})`,
           } as CSSProperties
         }
       >

@@ -254,6 +254,153 @@ body {
     rotateY(var(--card-rotate-y)) rotateZ(var(--card-rotate-z)) scale(0.82);
 }
 
+.landing-floor-panel {
+  --active-accent: #38bdf8;
+  position: fixed;
+  top: 52%;
+  left: clamp(1rem, 2.2vw, 1.8rem);
+  z-index: 8;
+  width: 12.4rem;
+  padding: 0.68rem;
+  color: #111827;
+  pointer-events: auto;
+  transform: translateY(-50%) perspective(780px) rotateY(10deg) rotateX(1deg);
+  transform-origin: left center;
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+
+.landing-floor-panel::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 0.5rem;
+  background:
+    linear-gradient(105deg, rgba(255, 255, 255, 0.86), rgba(175, 178, 186, 0.92) 48%),
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.9), transparent 32%);
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.4),
+    0 0 42px color-mix(in srgb, var(--active-accent) 32%, transparent),
+    0 0 0 1px rgba(15, 23, 42, 0.16) inset;
+  content: "";
+}
+
+.landing-floor-panel[data-previewing="true"] {
+  pointer-events: none;
+  transform: translateY(-50%) perspective(780px) rotateY(10deg) rotateX(1deg) scale(0.96);
+}
+
+.landing-floor-panel[data-ready="false"] {
+  pointer-events: none;
+}
+
+.landing-floor-panel__screen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 2.1rem;
+  margin-bottom: 0.64rem;
+  padding: 0 0.72rem;
+  border: 2px solid rgba(255, 255, 255, 0.76);
+  border-radius: 0.34rem;
+  background: #050507;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.38) inset;
+}
+
+.landing-floor-panel__screen span {
+  color: #56ff7b;
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(86, 255, 123, 0.72);
+}
+
+.landing-floor-panel__screen strong {
+  color: #ff365d;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 10px rgba(255, 54, 93, 0.78);
+}
+
+.landing-floor-panel__rows {
+  display: grid;
+  gap: 0.34rem;
+}
+
+.landing-floor-panel__row {
+  display: grid;
+  grid-template-columns: 2.05rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.48rem;
+  min-height: 1.78rem;
+  padding: 0.1rem 0.28rem;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.landing-floor-panel__row:focus-visible {
+  border-radius: 0.42rem;
+  outline: 2px solid color-mix(in srgb, var(--active-accent) 76%, white);
+  outline-offset: 2px;
+}
+
+.landing-floor-panel__button {
+  display: grid;
+  width: 1.74rem;
+  height: 1.74rem;
+  place-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.32);
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 36% 28%, #ffffff, #d9dce1 42%, #8e949c 100%),
+    linear-gradient(145deg, #f8fafc, #8a9099);
+  box-shadow:
+    0 5px 10px rgba(15, 23, 42, 0.24),
+    0 1px 0 rgba(255, 255, 255, 0.94) inset,
+    0 -2px 5px rgba(15, 23, 42, 0.2) inset;
+  color: #30343b;
+  font-size: 0.84rem;
+  font-weight: 800;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.landing-floor-panel__label {
+  min-width: 0;
+  color: rgba(17, 24, 39, 0.78);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.landing-floor-panel__row:hover .landing-floor-panel__button,
+.landing-floor-panel__row[data-active="true"] .landing-floor-panel__button {
+  background:
+    radial-gradient(
+      circle at 34% 28%,
+      #ffffff,
+      color-mix(in srgb, var(--active-accent) 58%, white) 38%,
+      var(--active-accent) 100%
+    ),
+    var(--active-accent);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.landing-floor-panel__row[data-active="true"] .landing-floor-panel__label {
+  color: #020617;
+}
+
 .landing__enter {
   position: absolute;
   left: 50%;
@@ -650,6 +797,41 @@ body {
 
   .landing__card {
     width: min(15.5rem, calc(100vw - 1.5rem));
+  }
+
+  .landing-floor-panel {
+    top: auto;
+    right: 0.75rem;
+    bottom: 0.85rem;
+    left: auto;
+    width: min(10.7rem, calc(100vw - 1.5rem));
+    padding: 0.52rem;
+    transform: perspective(620px) rotateX(2deg);
+  }
+
+  .landing-floor-panel[data-previewing="true"] {
+    transform: perspective(620px) rotateX(2deg) scale(0.96);
+  }
+
+  .landing-floor-panel__screen {
+    height: 1.82rem;
+    margin-bottom: 0.46rem;
+  }
+
+  .landing-floor-panel__row {
+    grid-template-columns: 1.72rem minmax(0, 1fr);
+    gap: 0.36rem;
+    min-height: 1.48rem;
+  }
+
+  .landing-floor-panel__button {
+    width: 1.46rem;
+    height: 1.46rem;
+    font-size: 0.72rem;
+  }
+
+  .landing-floor-panel__label {
+    font-size: 0.6rem;
   }
 
   .landing-modal {
