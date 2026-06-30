@@ -69,7 +69,7 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
       const side = Math.sin(angle);
       const face = Math.cos(angle);
       const yNorm = ((y - minY) / yRange) * 2 - 1;
-      const orbitRotateY = -side * 62;
+      const orbitRotateY = -angle * (180 / Math.PI);
 
       return {
         depth: (face + 1) / 2,
