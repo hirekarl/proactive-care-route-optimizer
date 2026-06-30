@@ -1,8 +1,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 
-import { CARD_ORBIT_POSITIONS } from "./cardOrbit";
-import { landingFacts } from "./landingFacts";
+import { landingFloors } from "./landingFloors";
 import { landingScrollState } from "./landingScrollState";
 
 interface FactCardsOverlayProps {
@@ -10,9 +9,7 @@ interface FactCardsOverlayProps {
   previewing?: boolean;
 }
 
-const START_T = 0.05;
-const END_T = 0.86;
-const FOCUS_RANGE = 0.12;
+const FOCUS_RANGE = 0.09;
 const ORBIT_REVEAL_START = 0.035;
 const ORBIT_REVEAL_END = 0.09;
 
@@ -51,34 +48,32 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
   }, []);
 
   const cards = useMemo(() => {
-    const totalSpan = END_T - START_T;
     const orbitReveal = Math.min(
       1,
       Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
     );
     const orbit = compact
-      ? { centerX: 50, centerY: 54, radiusX: 18, radiusY: 31, swayY: 4.4 }
-      : { centerX: 61, centerY: 53, radiusX: 24, radiusY: 30, swayY: 3.2 };
-    const yValues = CARD_ORBIT_POSITIONS.map(([, y]) => y);
+      ? { centerX: 50, centerY: 48, radiusX: 18, radiusY: 20, swayY: 3.6 }
+      : { centerX: 61, centerY: 50, radiusX: 24, radiusY: 22, swayY: 3.2 };
+    const yValues = landingFloors.map((floor) => floor.position[1]);
     const maxY = Math.max(...yValues);
     const minY = Math.min(...yValues);
     const yRange = Math.max(maxY - minY, 0.001);
 
-    return landingFacts.map((fact, index) => {
-      const tZoom = START_T + totalSpan * ((index + 0.5) / landingFacts.length);
-      const delta = Math.abs(offset - tZoom);
+    return landingFloors.map((floor) => {
+      const delta = Math.abs(offset - floor.scrollOffset);
       const focus = Math.max(0, 1 - delta / FOCUS_RANGE);
       const easedFocus = focus * focus * (3 - 2 * focus);
-      const [x, y, z] = CARD_ORBIT_POSITIONS[index];
+      const [x, y, z] = floor.position;
       const angle = Math.atan2(z, x) + dragRotation - 0.26;
       const side = Math.sin(angle);
       const face = Math.cos(angle);
       const yNorm = ((y - minY) / yRange) * 2 - 1;
-      const orbitRotateY = -side * 62;
+      const orbitRotateY = -angle * (180 / Math.PI);
 
       return {
         depth: (face + 1) / 2,
-        fact,
+        floor,
         focus: easedFocus,
         orbitReveal,
         placement: {
@@ -97,7 +92,7 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
     Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
   );
   const orbitPath = compact
-    ? { centerX: 50, centerY: 54, height: 62, width: 52 }
+    ? { centerX: 50, centerY: 50, height: 52, width: 52 }
     : { centerX: 61, centerY: 53, height: 60, width: 48 };
 
   return (
@@ -115,26 +110,35 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
       }
     >
       <div className="landing__orbit-path" aria-hidden="true" />
-      {cards.map(({ depth, fact, focus, orbitReveal, placement, rotateX, rotateY, rotateZ }) => {
+      {cards.map(({ depth, floor, focus, orbitReveal, placement, rotateX, rotateY, rotateZ }) => {
         const active = focus > 0.42;
-        const cardOpacity =
-          orbitReveal * Math.min(0.98, Math.max(0.08, 0.05 + depth * 0.08 + focus * 0.86));
+        const cardOpacity = orbitReveal * focus * focus;
         const cardScale = 0.74 + focus * 0.28;
         const cardY = (1 - focus) * 14;
         const orbitDepth = Math.round(8 + depth * 4 + focus * 12);
+        const openFloor = () => {
+          if (floor.kind === "external" && floor.href) {
+            window.open(floor.href, "_blank", "noopener,noreferrer");
+            return;
+          }
+
+          if (floor.tabIndex !== undefined) {
+            onSelectTab(floor.tabIndex);
+          }
+        };
 
         return (
           <button
-            key={fact.id}
+            key={floor.id}
             className="landing__card glass-card group"
             type="button"
             data-active={active}
             disabled={previewing || !active || orbitReveal < 0.95}
-            aria-label={`Open ${fact.eyebrow} tab preview`}
-            onClick={() => onSelectTab(fact.tabIndex)}
+            aria-label={`Open ${floor.eyebrow}`}
+            onClick={openFloor}
             style={
               {
-                "--accent": fact.hue,
+                "--accent": floor.hue,
                 "--focus": cardOpacity.toFixed(3),
                 "--card-scale": cardScale.toFixed(3),
                 "--card-y": `${cardY.toFixed(1)}px`,
@@ -149,13 +153,13 @@ export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsO
           >
             <div className="glass-card__eyebrow">
               <span className="glass-card__dot" />
-              {fact.eyebrow}
+              Floor {floor.floor} / {floor.eyebrow}
             </div>
-            <div className="glass-card__value text-glow">{fact.value}</div>
-            <div className="glass-card__label">{fact.label}</div>
-            <p className="glass-card__detail">{fact.detail}</p>
+            <div className="glass-card__value text-glow">{floor.value}</div>
+            <div className="glass-card__label">{floor.label}</div>
+            <p className="glass-card__detail">{floor.detail}</p>
             <div className="glass-card__action">
-              <span>Open tab</span>
+              <span>{floor.kind === "external" ? "Open site" : "Open tab"}</span>
               <svg
                 width="14"
                 height="14"
