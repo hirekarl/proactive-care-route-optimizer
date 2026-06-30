@@ -106,15 +106,8 @@ class Command(BaseCommand):
             if lonlat is None:
                 continue
             lon, lat = lonlat
-            street = (
-                row.get("programaddress")
-                or row.get("address")
-                or (
-                    (row.get("house_number") or "").strip()
-                    + " "
-                    + (row.get("street_name") or "").strip()
-                ).strip()
-            )
+            candidates = self._address_candidates(row)
+            street = candidates[0] if candidates else ""
             providers.append(
                 DFTAProvider(
                     provider_id=str(provider_id),
