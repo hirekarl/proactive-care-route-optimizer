@@ -628,19 +628,16 @@ body {
   align-items: center;
   justify-content: center;
   padding: clamp(1rem, 3vw, 2rem);
-  background:
-    radial-gradient(circle at 26% 14%, rgba(56, 189, 248, 0.2), transparent 32%),
-    radial-gradient(circle at 78% 82%, rgba(251, 146, 60, 0.16), transparent 34%),
-    rgba(2, 6, 23, 0.66);
+  background: rgba(2, 6, 23, 0.72);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  animation: landing-modal-fade 240ms ease-out;
+  animation: landing-modal-bg-fade 350ms ease-out forwards;
 }
 
 .landing-modal__panel {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   width: min(74rem, calc(100vw - 2rem));
   height: min(86vh, 52rem);
   overflow: hidden;
@@ -650,6 +647,8 @@ body {
   box-shadow:
     0 34px 90px -24px rgba(0, 0, 0, 0.9),
     0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transform-origin: center;
+  animation: landing-modal-panel-zoom 450ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .landing-modal__close {
@@ -862,14 +861,23 @@ body {
   overflow-y: auto;
 }
 
-@keyframes landing-modal-fade {
+@keyframes landing-modal-bg-fade {
   from {
     opacity: 0;
-    transform: scale(0.985);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+  }
+}
+
+@keyframes landing-modal-panel-zoom {
+  from {
+    opacity: 0;
+    transform: scale(0.7) translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
   }
 }
 
