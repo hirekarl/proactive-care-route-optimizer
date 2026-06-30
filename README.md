@@ -10,7 +10,7 @@ Full product specification: [`Senior-Care PRD - Proactive Care-Route Optimizer.d
 
 NYC has 1.8 million older adults served by 468 nonprofits contracted by the Department for the Aging (DFTA). Every service relationship — home-delivered meals, home care visits, case management — is mediated by a building elevator. When elevators fail, homebound seniors miss meals and appointments. The system today is entirely reactive: providers learn about outages only after a visit is missed, and city complaint data lags 1–3 business days.
 
-**This tool changes that.** By combining a real-time pipeline of 264,000+ elevator complaints with DFTA provider locations and 5–7 day heat forecasts, it ranks at-risk buildings before outages happen. Providers can reroute. Seniors don't miss care.
+**This tool changes that.** By combining the active DOB elevator-complaint feed, 264,000+ historical complaint records, DFTA provider locations, and 5–7 day heat forecasts, it ranks at-risk buildings before routes go out. Providers can reroute. Seniors don't miss care.
 
 Key evidence from the EDA phase:
 - **2,849 chronic offender buildings** identified citywide (1+ complaint in last 12 months, 3+ in last 3 years)

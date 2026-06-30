@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 
+import { seedTodaysRoutes } from "./api/seedRoutes";
 import { AppShell } from "./components/layout/AppShell";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -8,6 +10,10 @@ import { OutagesPage } from "./pages/OutagesPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 
 function App() {
+  useEffect(() => {
+    void seedTodaysRoutes();
+  }, []);
+
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
