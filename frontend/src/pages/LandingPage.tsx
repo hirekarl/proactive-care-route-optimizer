@@ -2,6 +2,7 @@ import type { CSSProperties, ComponentType } from "react";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { AudioOverlay } from "../components/landing/AudioOverlay";
 import { EnterButtonOverlay } from "../components/landing/EnterButtonOverlay";
 import { FactCardsOverlay } from "../components/landing/FactCardsOverlay";
 import { FloorControlOverlay } from "../components/landing/FloorControlOverlay";
@@ -131,6 +132,7 @@ export function LandingPage() {
       </div>
 
       <EnterButtonOverlay onEnter={enterDashboard} />
+      <AudioOverlay />
 
       {selectedTab !== null && previewOpen && (
         <DashboardModal activeTab={selectedTab} onClose={closePreview} />
