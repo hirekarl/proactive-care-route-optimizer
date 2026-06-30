@@ -88,15 +88,17 @@ export function OutageMap({
             icon={providerIcon}
           >
             <Popup>
-              <div className="p-1 font-sans text-xs">
-                <h3 className="text-sm font-bold text-sky-600">{provider.name}</h3>
-                <p className="mt-0.5 text-[10px] text-slate-500">{provider.borough}</p>
-                <div className="my-1.5 border-t border-slate-100" />
-                <p>
-                  <strong>Address:</strong> {provider.address}
+              <div className="p-0.5 font-sans text-xs">
+                <h3 className="text-sm font-bold leading-tight text-sky-400">{provider.name}</h3>
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                  {provider.borough} Depot
                 </p>
-                <p className="mt-1">
-                  <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">
+                <div className="my-2 border-t border-white/10" />
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Address:</strong> {provider.address}
+                </p>
+                <p className="mt-2.5">
+                  <span className="rounded border border-sky-500/20 bg-sky-950/40 px-2 py-0.5 text-[10px] font-semibold text-sky-300">
                     {provider.seniorsServed.toLocaleString()} seniors served
                   </span>
                 </p>
@@ -109,15 +111,19 @@ export function OutageMap({
         {stops.map((stop) => (
           <Marker key={`stop-${stop.id}`} position={[stop.lat, stop.lng]} icon={stopIcon}>
             <Popup>
-              <div className="p-1 font-sans text-xs">
-                <h3 className="text-sm font-bold text-amber-600">{stop.recipientName}</h3>
-                <p className="mt-0.5 text-[10px] text-slate-500">DFTA Care Stop</p>
-                <div className="my-1.5 border-t border-slate-100" />
-                <p>
-                  <strong>Address:</strong> {stop.address}
+              <div className="p-0.5 font-sans text-xs">
+                <h3 className="text-sm font-bold leading-tight text-amber-400">
+                  {stop.recipientName}
+                </h3>
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                  DFTA Care Recipient
                 </p>
-                <p className="mt-1">
-                  <strong>Floor:</strong> {stop.floor}
+                <div className="my-2 border-t border-white/10" />
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Address:</strong> {stop.address}
+                </p>
+                <p className="mt-1 text-slate-300">
+                  <strong className="text-slate-400">Floor:</strong> {stop.floor}
                 </p>
               </div>
             </Popup>
@@ -128,26 +134,26 @@ export function OutageMap({
         {outages.map((outage) => (
           <Marker key={`outage-${outage.id}`} position={[outage.lat, outage.lng]} icon={outageIcon}>
             <Popup>
-              <div className="p-1 font-sans text-xs">
-                <h3 className="text-sm font-bold text-red-600">Active Elevator Outage</h3>
-                <p className="mt-0.5 text-[10px] text-slate-500">
-                  Complaint #{outage.complaintNumber}
+              <div className="p-0.5 font-sans text-xs">
+                <h3 className="text-sm font-bold leading-tight text-rose-400">Active Outage</h3>
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                  DOB Complaint #{outage.complaintNumber}
                 </p>
-                <div className="my-1.5 border-t border-slate-100" />
-                <p>
-                  <strong>Address:</strong> {outage.address}
+                <div className="my-2 border-t border-white/10" />
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Address:</strong> {outage.address}
                 </p>
-                <p>
-                  <strong>Borough:</strong> {outage.borough}
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Borough:</strong> {outage.borough}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {outage.singleElevator && (
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                    <span className="rounded border border-red-500/20 bg-red-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">
                       Single Elevator Bldg
                     </span>
                   )}
                   {outage.chronicOffender && (
-                    <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                    <span className="rounded border border-purple-500/20 bg-purple-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300">
                       Chronic Offender
                     </span>
                   )}
@@ -165,25 +171,29 @@ export function OutageMap({
             icon={hotspotIcon}
           >
             <Popup>
-              <div className="p-1 font-sans text-xs">
-                <h3 className="text-sm font-bold text-fuchsia-600">Vulnerability Hotspot</h3>
-                <p className="mt-0.5 text-[10px] text-slate-500">{building.address}</p>
-                <div className="my-1.5 border-t border-slate-100" />
-                <p>
-                  <strong>Borough:</strong> {building.borough}
+              <div className="p-0.5 font-sans text-xs">
+                <h3 className="text-sm font-bold leading-tight text-fuchsia-400">
+                  Vulnerability Hotspot
+                </h3>
+                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                  {building.address}
                 </p>
-                <p>
-                  <strong>Council District:</strong> {building.councilDistrict}
+                <div className="my-2 border-t border-white/10" />
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Borough:</strong> {building.borough} (CD{" "}
+                  {building.councilDistrict})
                 </p>
-                <p className="mt-1">
-                  <strong>DOB Complaints (3yr):</strong> {building.count}
+                <p className="text-slate-300">
+                  <strong className="text-slate-400">Complaints (3yr):</strong> {building.count}
                 </p>
-                <p>
-                  <strong>Risk Score:</strong> {building.riskScore.toFixed(2)}
-                </p>
-                <p>
-                  <strong>Confidence:</strong> {building.riskConfidence}%
-                </p>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <span className="rounded border border-fuchsia-500/20 bg-fuchsia-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
+                    Risk: {building.riskScore.toFixed(2)}
+                  </span>
+                  <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                    Conf: {building.riskConfidence}%
+                  </span>
+                </div>
               </div>
             </Popup>
           </Marker>
