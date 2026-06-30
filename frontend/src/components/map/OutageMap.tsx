@@ -16,20 +16,13 @@ interface OutageMapProps {
 }
 
 // Create custom glowing markers to avoid Vite marker 404 bugs and match dark neon theme
-const createMarkerIcon = (color: string) => {
+const createMarkerIcon = (color: string, size = 14) => {
+  const half = size / 2;
   return L.divIcon({
     className: "custom-leaflet-marker",
-    html: `<div style="
-      width: 14px;
-      height: 14px;
-      background-color: ${color};
-      border: 2px solid #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 0 10px ${color}, 0 0 20px ${color};
-      transform: translate(-3px, -3px);
-    "></div>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px ${color},0 0 20px ${color};"></div>`,
+    iconSize: [size, size],
+    iconAnchor: [half, half],
   });
 };
 
@@ -41,6 +34,7 @@ export function OutageMap({
   height = 520,
 }: OutageMapProps) {
   const outageIcon = useMemo(() => createMarkerIcon("#f43f5e"), []); // Neon Rose/Pink-Red
+  const singleElevatorIcon = useMemo(() => createMarkerIcon("#ffffff", 20), []); // White, larger — single-elevator buildings
   const stopIcon = useMemo(() => createMarkerIcon("#fbbf24"), []); // Neon Amber
   const providerIcon = useMemo(() => createMarkerIcon("#0ea5e9"), []); // Neon Blue
   const hotspotIcon = useMemo(() => createMarkerIcon("#ff3ec8"), []); // Neon Magenta/Pink
@@ -132,7 +126,11 @@ export function OutageMap({
 
         {/* Active Elevator Outage Markers */}
         {outages.map((outage) => (
-          <Marker key={`outage-${outage.id}`} position={[outage.lat, outage.lng]} icon={outageIcon}>
+          <Marker
+            key={`outage-${outage.id}`}
+            position={[outage.lat, outage.lng]}
+            icon={outage.singleElevator ? singleElevatorIcon : outageIcon}
+          >
             <Popup>
               <div className="p-0.5 font-sans text-xs">
                 <h3 className="text-sm font-bold leading-tight text-rose-400">Active Outage</h3>
@@ -206,6 +204,7 @@ export function OutageMap({
 export function MapLegend({ showAdvocateHotspots = false }: { showAdvocateHotspots?: boolean }) {
   const items = [
     { color: "#f43f5e", label: "Active outage" },
+    { color: "#ffffff", label: "Single elevator (critical)" },
     { color: "#fbbf24", label: "At-risk care stop" },
     { color: "#0ea5e9", label: "Provider depot" },
     ...(showAdvocateHotspots ? [{ color: "#ff3ec8", label: "Elevator Advocate hotspot" }] : []),
