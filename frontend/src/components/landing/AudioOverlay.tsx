@@ -1,56 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  DEFAULT_BG_VOLUME,
+  globalAudio,
+  initGlobalAudio,
+  playNarrationBeat,
+  toggleGlobalAudio,
+} from "../../lib/globalAudio";
 import { nearestLandingFloor } from "./landingFloors";
 import { landingScrollState } from "./landingScrollState";
-
-const DEFAULT_BG_VOLUME = 0.55;
-const DUCKED_BG_VOLUME = 0.18;
-
-const FLOOR_NARRATIONS: Record<number, string> = {
-  0: "Every day, tens of thousands of New York City seniors rely on home-delivered care. And every day, their caregivers navigate a city where elevators fail without warning — leaving workers stranded and seniors without food. This tool changes that.",
-  6: "The Dashboard surfaces every active risk in one place: at-risk stops, complaints by borough, heat advisories. Everything a dispatcher needs to act before a worker reaches the lobby.",
-  5: "The Outage Map lays live elevator complaints over active senior-care routes. Each outage carries a half-mile proximity ring — so dispatchers can see at a glance which stops are inside the danger zone.",
-  4: "The Complaints Feed pulls live from NYC's Department of Buildings open data — filtered and flagged for what matters most: chronic offenders, and single-elevator buildings where any outage means total inaccessibility.",
-  3: "The Providers Directory maps every DFTA-contracted care provider in the five boroughs — location, client count, assigned routes. When a building goes dark, dispatchers can find the nearest available provider in seconds.",
-  2: "Elevator Advocate is built for tenants, organizers, and care teams tracking elevator accountability from the outside. If that's your work, this is where to go.",
-  1: "The Senior-Care Exploratory Analysis is the research behind this tool — the 79% proximity rate, the heat-week complaint spike, the Bronx concentration, the 135 single-elevator buildings. To understand where the numbers come from, start here.",
-};
 
 export function AudioOverlay() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [offset, setOffset] = useState(0);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const fadeTarget = useRef<number>(DEFAULT_BG_VOLUME);
   const lastSpokenBeat = useRef<number | null>(null);
 
-  // Initialize background music
+  // Initialize and sync global audio state
   useEffect(() => {
-    const audioUrl =
-      typeof window !== "undefined" ? window.location.origin + "/RiseUp.mp3" : "/RiseUp.mp3";
+    initGlobalAudio();
+    setIsPlaying(globalAudio.isPlaying);
+    setIsSpeaking(globalAudio.isSpeaking);
 
-    const audio = new Audio(audioUrl);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = 0.0;
-
-    audio.onerror = (e) => {
-      console.error("Audio element failed to load source:", audioUrl, e);
+    const handleSync = () => {
+      setIsPlaying(globalAudio.isPlaying);
+      setIsSpeaking(globalAudio.isSpeaking);
     };
 
-    audioRef.current = audio;
-
-    // Load speech voices
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-    }
-
+    window.addEventListener("global-audio-change", handleSync);
     return () => {
-      audio.pause();
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
+      window.removeEventListener("global-audio-change", handleSync);
+
+      // Stop narration when leaving the landing page, but let background music keep playing!
+      if (globalAudio.narrationAudio) {
+        globalAudio.narrationAudio.pause();
       }
+      globalAudio.isSpeaking = false;
+      globalAudio.fadeTarget = DEFAULT_BG_VOLUME;
+      window.dispatchEvent(new Event("global-audio-change"));
     };
   }, []);
 
@@ -65,78 +53,31 @@ export function AudioOverlay() {
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  // Smooth background music volume interpolation (audio ducking)
-  useEffect(() => {
-    let frameId = 0;
-    const adjustVolume = () => {
-      if (audioRef.current && isPlaying) {
-        const current = audioRef.current.volume;
-        const target = fadeTarget.current;
-        const diff = target - current;
-        if (Math.abs(diff) > 0.005) {
-          audioRef.current.volume = current + Math.sign(diff) * 0.015;
-        } else {
-          audioRef.current.volume = target;
-        }
-      }
-      frameId = requestAnimationFrame(adjustVolume);
-    };
-    frameId = requestAnimationFrame(adjustVolume);
-    return () => cancelAnimationFrame(frameId);
-  }, [isPlaying]);
-
-  // Determine active beat based on offset
-  const activeBeat = useMemo(() => {
-    if (offset <= 0.05) return 0; // Beat 0: Hero
-    return nearestLandingFloor(offset).floor; // Beat 1-6
+  // Determine active floor (0 for Hero, 1-6 for floors)
+  const activeFloor = useMemo(() => {
+    if (offset <= 0.05) return 0; // Hero
+    return nearestLandingFloor(offset).floor; // Floor 1 to 6
   }, [offset]);
 
-  // Speak beat text
-  const speakText = (text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    // Duck backing track
-    fadeTarget.current = DUCKED_BG_VOLUME;
-    setIsSpeaking(true);
-
-    const utterance = new SpeechSynthesisUtterance(text);
-
-    // Try to find a high quality natural English voice
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice =
-      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Natural")) ||
-      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Google")) ||
-      voices.find((v) => v.lang.startsWith("en")) ||
-      voices[0];
-
-    if (englishVoice) {
-      utterance.voice = englishVoice;
-    }
-
-    utterance.rate = 0.95;
-    utterance.volume = 1.0;
-
-    utterance.onend = () => {
-      if (!window.speechSynthesis.speaking) {
-        fadeTarget.current = DEFAULT_BG_VOLUME;
-        setIsSpeaking(false);
-      }
+  // Map floor number to the correct pre-recorded audio beat index
+  const activeBeatIndex = useMemo(() => {
+    if (activeFloor === 0) return 0; // Hero -> Beat 0
+    // Floor 6 (Dashboard) -> Beat 1
+    // Floor 5 (Outage Map) -> Beat 2
+    // Floor 4 (DOB Feed) -> Beat 3
+    // Floor 3 (Providers) -> Beat 4
+    // Floor 2 (Elevator Advocate) -> Beat 5
+    // Floor 1 (Senior-Care EDA) -> Beat 6
+    const mapping: Record<number, number> = {
+      6: 1,
+      5: 2,
+      4: 3,
+      3: 4,
+      2: 5,
+      1: 6,
     };
-
-    utterance.onerror = (e) => {
-      if (e.error !== "interrupted" && !window.speechSynthesis.speaking) {
-        fadeTarget.current = DEFAULT_BG_VOLUME;
-        setIsSpeaking(false);
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
+    return mapping[activeFloor] ?? 0;
+  }, [activeFloor]);
 
   // Trigger narration beat changes
   useEffect(() => {
@@ -145,47 +86,16 @@ export function AudioOverlay() {
       return;
     }
 
-    if (lastSpokenBeat.current !== activeBeat) {
-      lastSpokenBeat.current = activeBeat;
-      const text = FLOOR_NARRATIONS[activeBeat];
-      if (text) {
-        speakText(text);
-      }
+    if (lastSpokenBeat.current !== activeBeatIndex) {
+      lastSpokenBeat.current = activeBeatIndex;
+      playNarrationBeat(activeBeatIndex);
     }
-  }, [activeBeat, isPlaying]);
-
-  // Handle play/mute toggle click
-  const toggleAudio = () => {
-    if (!audioRef.current) return;
-
-    if (isPlaying) {
-      // Pause
-      audioRef.current.pause();
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-      setIsSpeaking(false);
-      setIsPlaying(false);
-    } else {
-      // Play
-      setIsPlaying(true);
-      fadeTarget.current = DEFAULT_BG_VOLUME;
-      audioRef.current.volume = 0.0;
-      audioRef.current.play().catch((err) => {
-        console.warn("Audio autoplay blocked or failed:", err);
-      });
-      // Speak current floor beat immediately
-      const text = FLOOR_NARRATIONS[activeBeat];
-      if (text) {
-        speakText(text);
-      }
-    }
-  };
+  }, [activeBeatIndex, isPlaying]);
 
   return (
     <div className="landing-audio-widget">
       <button
-        onClick={toggleAudio}
+        onClick={toggleGlobalAudio}
         type="button"
         className="landing-audio-widget__btn"
         data-muted={!isPlaying}
@@ -234,7 +144,7 @@ export function AudioOverlay() {
         <span className="landing-audio-widget__title">
           {isPlaying
             ? isSpeaking
-              ? `Floor ${activeBeat === 0 ? "G" : activeBeat} Narration`
+              ? `Floor ${activeFloor === 0 ? "G" : activeFloor} Narration`
               : "Rise Up (Ambient)"
             : "Click to Listen"}
         </span>

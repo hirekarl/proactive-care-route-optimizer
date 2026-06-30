@@ -11,7 +11,6 @@ export interface Provider {
   address: string;
   lat: number;
   lng: number;
-  seniorsServed: number;
 }
 
 export interface Outage {

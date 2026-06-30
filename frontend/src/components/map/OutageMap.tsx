@@ -74,7 +74,6 @@ export function OutageMap({
           />
         ))}
 
-        {/* Provider Depots Markers */}
         {providers.map((provider) => (
           <Marker
             key={`provider-${provider.id}`}
@@ -91,17 +90,11 @@ export function OutageMap({
                 <p className="text-slate-300">
                   <strong className="text-slate-400">Address:</strong> {provider.address}
                 </p>
-                <p className="mt-2.5">
-                  <span className="rounded border border-sky-500/20 bg-sky-950/40 px-2 py-0.5 text-[10px] font-semibold text-sky-300">
-                    {provider.seniorsServed.toLocaleString()} seniors served
-                  </span>
-                </p>
               </div>
             </Popup>
           </Marker>
         ))}
 
-        {/* DFTA Care Stop Markers */}
         {stops.map((stop) => (
           <Marker key={`stop-${stop.id}`} position={[stop.lat, stop.lng]} icon={stopIcon}>
             <Popup>
@@ -124,7 +117,6 @@ export function OutageMap({
           </Marker>
         ))}
 
-        {/* Active Elevator Outage Markers */}
         {outages.map((outage) => (
           <Marker
             key={`outage-${outage.id}`}
@@ -161,7 +153,6 @@ export function OutageMap({
           </Marker>
         ))}
 
-        {/* Elevator Advocate Hotspots Markers */}
         {advocateHotspots.map((building) => (
           <Marker
             key={`hotspot-${building.bin}`}

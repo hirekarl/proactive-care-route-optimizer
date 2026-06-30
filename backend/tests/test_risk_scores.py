@@ -947,16 +947,6 @@ class TestScoreBuildingHeat:
         assert result["heat_ratio"] is None
 
 
-@pytest.mark.django_db
-def test_providers_endpoint_returns_seniors_served_stub() -> None:
-    """GET /api/providers/ includes seniors_served stubbed to 0."""
-    _insert_provider("PROV-STUB-001", 40.858, -73.925)
-    client = Client()
-    resp = client.get("/api/providers/")
-    assert resp.status_code == 200
-    assert any(p.get("seniorsServed") == 0 for p in resp.json())
-
-
 class TestHeatFlagCbs:
     """Unit tests for Command._heat_flag_cbs; no database required."""
 

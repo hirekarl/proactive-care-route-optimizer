@@ -7,6 +7,7 @@ import { StateBlock } from "../components/ui/StateBlock";
 import { useApi } from "../hooks/useApi";
 
 const topComplaintCount = Math.max(
+  1,
   ...elevatorAdvocateStats.topBuildings.map((building) => building.count)
 );
 
