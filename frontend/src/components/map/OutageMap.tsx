@@ -91,11 +91,6 @@ export function OutageMap({
                 <p className="text-slate-300">
                   <strong className="text-slate-400">Address:</strong> {provider.address}
                 </p>
-                <p className="mt-2.5">
-                  <span className="rounded border border-sky-500/20 bg-sky-950/40 px-2 py-0.5 text-[10px] font-semibold text-sky-300">
-                    {provider.seniorsServed.toLocaleString()} seniors served
-                  </span>
-                </p>
               </div>
             </Popup>
           </Marker>

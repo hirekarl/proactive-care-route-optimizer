@@ -23,10 +23,6 @@ export function ProvidersPage() {
       return {
         ...entry,
         providerCount: boroughProviders.length,
-        seniorsServed: boroughProviders.reduce(
-          (total, provider) => total + provider.seniorsServed,
-          0
-        ),
       };
     });
   }, [providers.data]);
@@ -78,16 +74,10 @@ export function ProvidersPage() {
                         }}
                       />
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="mt-3 text-xs">
                       <div>
-                        <p className="text-slate-500">Providers</p>
+                        <p className="text-slate-500">Contracted Providers</p>
                         <p className="mt-0.5 font-semibold text-slate-200">{entry.providerCount}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Seniors</p>
-                        <p className="mt-0.5 font-semibold text-slate-200">
-                          {entry.seniorsServed.toLocaleString()}
-                        </p>
                       </div>
                     </div>
                   </article>
@@ -103,8 +93,8 @@ export function ProvidersPage() {
                       <h3 className="text-sm font-semibold text-white">{p.name}</h3>
                       <p className="mt-0.5 text-xs text-slate-500">{p.borough}</p>
                     </div>
-                    <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs font-medium text-slate-200">
-                      {p.seniorsServed.toLocaleString()} seniors
+                    <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs font-medium text-slate-400">
+                      Contracted
                     </span>
                   </div>
                   <p className="mt-3 text-sm text-slate-400">{p.address}</p>

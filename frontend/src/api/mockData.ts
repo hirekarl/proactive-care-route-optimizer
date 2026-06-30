@@ -15,7 +15,6 @@ export const providers: Provider[] = [
     address: "1595 Lexington Ave, New York, NY 10029",
     lat: 40.7918,
     lng: -73.9445,
-    seniorsServed: 412,
   },
   {
     id: "p2",
@@ -24,7 +23,6 @@ export const providers: Provider[] = [
     address: "1309 Fulton Ave, Bronx, NY 10456",
     lat: 40.8331,
     lng: -73.9023,
-    seniorsServed: 638,
   },
   {
     id: "p3",
@@ -33,7 +31,6 @@ export const providers: Provider[] = [
     address: "1368 Fulton St, Brooklyn, NY 11216",
     lat: 40.6809,
     lng: -73.9512,
-    seniorsServed: 521,
   },
   {
     id: "p4",
@@ -42,7 +39,6 @@ export const providers: Provider[] = [
     address: "136-65 41st Ave, Queens, NY 11355",
     lat: 40.7574,
     lng: -73.8301,
-    seniorsServed: 357,
   },
   {
     id: "p5",
@@ -51,7 +47,6 @@ export const providers: Provider[] = [
     address: "851 Grand Concourse, Bronx, NY 10451",
     lat: 40.8276,
     lng: -73.9229,
-    seniorsServed: 489,
   },
 ];
 

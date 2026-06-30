@@ -146,12 +146,7 @@ class ProviderSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
 
     id = serializers.CharField(source="provider_id")
     lng = serializers.FloatField(source="lon")
-    # seniorsServed not available in the DFTA dataset — see docs/deferred-frontend-api-gaps.md
-    seniors_served = serializers.SerializerMethodField()
 
     class Meta:
         model = DFTAProvider
-        fields = ["id", "name", "borough", "address", "lat", "lng", "seniors_served"]
-
-    def get_seniors_served(self, obj: DFTAProvider) -> int:
-        return 0
+        fields = ["id", "name", "borough", "address", "lat", "lng"]
