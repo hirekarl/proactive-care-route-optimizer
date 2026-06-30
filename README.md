@@ -55,7 +55,7 @@ flowchart TD
 
     DB[("PostgreSQL + PostGIS\nelevator_complaints · building_risk_scores\nweather_days · weather_forecasts\ndfta_* · routes · route_stops")]
 
-    NOD["NYC Open Data\nkqwi-7ncn · e5aq-a4j2 · juyv-2jek · ygfr-ij6t"]
+    NOD["NYC Open Data\nkqwi-7ncn · e5aq-a4j2 · juyv-2jek · ygfr-ij6t · cqc8-am9x"]
     OM["Open-Meteo\nHistorical Archive + Forecast API"]
     GS["NYC Planning\nGeoSearch API"]
 
@@ -342,6 +342,8 @@ The framework, library choices, and toolchain are Mitra's to evolve — these co
 | NYC Open Data | DOB Elevator Complaints | `kqwi-7ncn` | Active complaint feed — the "possible outage" signal |
 | NYC Open Data | DOB NOW Safety Compliance | `e5aq-a4j2` | Maps BIN → lat/lon for complaint locations |
 | NYC Open Data | DFTA Senior Centers | `ygfr-ij6t` | Senior center locations for vulnerability proximity scoring |
+| NYC Open Data | DFTA Providers | `cqc8-am9x` | Provider locations; default for `ingest_dfta` (pass `--provider-dataset` to override) |
+| NYC Open Data | DOB Elevator Device Details | `juyv-2jek` | Maps device number → `only_elevator_in_building`; step 2 of `ingest_elevator_devices` join |
 | NYC Planning | GeoSearch API | — | Fallback geocoding when a BIN has no device record |
 | Open-Meteo | Historical Archive | — | Daily temperature maxima for heat correlation; 2018–present |
 | Open-Meteo | Forecast API | — | 7-day temperature forecast; populates `weather_forecasts` for heat-advisory detection |
@@ -380,6 +382,15 @@ To deploy:
 1. Connect this repository to [Render](https://render.com) and select **Blueprint** deployment.
 2. Render reads `render.yaml` and provisions all services automatically.
 
+### Scheduled jobs
+
+`render.yaml` also provisions two cron services:
+
+| Service | Schedule | Command |
+|---|---|---|
+| `pcro-ingest-daily` | 06:00 UTC daily | Full ingest + score pipeline: `ingest_outages` → `ingest_weather` → `ingest_forecast` → `ingest_dfta` → `compute_risk_scores` → `ingest_elevator_devices` |
+| `pcro-purge-weekly` | 08:00 UTC Sunday | `purge_old_routes` (deletes stops older than 90 days) |
+
 ### Required environment variables
 
 The backend requires these env vars (Render generates/injects most of them via the Blueprint):
@@ -390,6 +401,7 @@ The backend requires these env vars (Render generates/injects most of them via t
 | `DATABASE_URL` | Injected from `pcro-db` |
 | `DJANGO_DEBUG` | Set to `False` in `render.yaml` |
 | `ALLOWED_HOSTS` | Set to `.onrender.com` in `render.yaml` |
+| `ROUTE_API_KEY` | Set manually in Render dashboard; required by `/api/alerts/at-risk/` and `/api/routes/stops/` |
 | `SOCRATA_APP_TOKEN` | Optional; raises NYC Open Data rate limits |
 
 ---
@@ -400,6 +412,7 @@ The backend requires these env vars (Render generates/injects most of them via t
 proactive-care-route-optimizer/
 ├── README.md
 ├── CLAUDE.md                  Claude Code session config and project guide
+├── AGENTS.md
 ├── CHANGELOG.md
 ├── docs/
 │   ├── nyc-open-data.md           NYC Open Data integration guide (datasets, ingest, PostGIS)
@@ -422,7 +435,7 @@ proactive-care-route-optimizer/
 │   ├── manage.py
 │   └── src/
 │       ├── core/              Django project (settings, urls, wsgi, asgi)
-│       └── api/               DRF app (health check; expand here)
+│       └── api/               DRF app: 10 endpoints, 7 management commands
 │   └── tests/
 └── frontend/                  Mitra's domain — framework subject to change
     ├── package.json
@@ -432,7 +445,19 @@ proactive-care-route-optimizer/
     ├── .prettierrc
     └── src/
         ├── main.tsx
-        └── App.tsx
+        ├── App.tsx
+        ├── api/               API client, mock data, seed routes
+        ├── components/
+        │   ├── dashboard/     AtRiskStopsTable, BoroughRiskChart, ElevatorAdvocatePanel,
+        │   │                  HeatAdvisoryBanner, OutagesTrendChart
+        │   ├── landing/       LandingScene (Three.js), Elevator3D, overlays, scroll state
+        │   ├── layout/        AppShell, Header, Sidebar
+        │   ├── map/           OutageMap (neon SVG poster)
+        │   └── ui/            Badge, Card, StatCard, StateBlock
+        ├── hooks/             useApi
+        ├── lib/               format (date / number helpers)
+        ├── pages/             DashboardPage, LandingPage, MapPage, OutagesPage, ProvidersPage
+        └── types/             shared TypeScript types
 ```
 
 ---
