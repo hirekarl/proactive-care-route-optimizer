@@ -807,8 +807,18 @@ body {
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  background: #f8fafc;
-  color: #0f172a;
+  background: rgba(10, 10, 16, 0.95);
+  color: #f8fafc;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.landing-modal__body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 10%, rgba(236, 72, 153, 0.08), transparent 45%);
 }
 
 .landing-modal__summary {
@@ -816,30 +826,33 @@ body {
   display: grid;
   gap: 0.25rem;
   padding: 1rem 4rem 1rem 1.25rem;
-  border-bottom: 1px solid rgba(203, 213, 225, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 62%),
-    #ffffff;
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 62%),
+    rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
 }
 
 .landing-modal__summary p {
   margin: 0;
-  color: color-mix(in srgb, var(--accent) 72%, #0f172a);
+  color: var(--accent);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  text-shadow: 0 0 10px var(--accent);
 }
 
 .landing-modal__summary h2 {
   margin: 0;
   font-size: 1.2rem;
   line-height: 1.2;
+  color: #ffffff;
 }
 
 .landing-modal__summary span {
   max-width: 52rem;
-  color: #475569;
+  color: #cbd5e1;
   font-size: 0.86rem;
   line-height: 1.45;
 }
