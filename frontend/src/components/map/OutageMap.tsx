@@ -15,7 +15,7 @@ interface OutageMapProps {
   height?: number;
 }
 
-// Create custom glowing markers to avoid Vite marker 404 bugs and match theme
+// Create custom glowing markers to avoid Vite marker 404 bugs and match dark neon theme
 const createMarkerIcon = (color: string) => {
   return L.divIcon({
     className: "custom-leaflet-marker",
@@ -25,7 +25,7 @@ const createMarkerIcon = (color: string) => {
       background-color: ${color};
       border: 2px solid #ffffff;
       border-radius: 50%;
-      box-shadow: 0 0 8px ${color};
+      box-shadow: 0 0 10px ${color}, 0 0 20px ${color};
       transform: translate(-3px, -3px);
     "></div>`,
     iconSize: [14, 14],
@@ -40,16 +40,16 @@ export function OutageMap({
   advocateHotspots = [],
   height = 520,
 }: OutageMapProps) {
-  const outageIcon = useMemo(() => createMarkerIcon("#ef4444"), []); // Red
-  const stopIcon = useMemo(() => createMarkerIcon("#f59e0b"), []); // Amber/Yellow
-  const providerIcon = useMemo(() => createMarkerIcon("#0ea5e9"), []); // Sky Blue
-  const hotspotIcon = useMemo(() => createMarkerIcon("#ff3ec8"), []); // Neon Pink
+  const outageIcon = useMemo(() => createMarkerIcon("#f43f5e"), []); // Neon Rose/Pink-Red
+  const stopIcon = useMemo(() => createMarkerIcon("#fbbf24"), []); // Neon Amber
+  const providerIcon = useMemo(() => createMarkerIcon("#0ea5e9"), []); // Neon Blue
+  const hotspotIcon = useMemo(() => createMarkerIcon("#ff3ec8"), []); // Neon Magenta/Pink
 
   const defaultCenter: [number, number] = [40.7128, -73.96]; // NYC center
 
   return (
     <div
-      className="leaflet-map-wrapper overflow-hidden rounded-lg border border-slate-200"
+      className="leaflet-map-wrapper overflow-hidden rounded-xl border border-fuchsia-500/20 shadow-[0_0_20px_rgba(240,171,252,0.15)]"
       style={{ height, width: "100%" }}
     >
       <MapContainer
@@ -58,23 +58,24 @@ export function OutageMap({
         scrollWheelZoom={true}
         style={{ height: "100%", width: "100%" }}
       >
+        {/* CartoDB Dark Matter Map Tiles */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
-        {/* 0.5-mile Proximity Rings (dashed circles) around Care Stops */}
+        {/* 0.5-mile Proximity Rings (dashed fuchsia/pink circles) around Care Stops */}
         {stops.map((stop) => (
           <Circle
             key={`ring-${stop.id}`}
             center={[stop.lat, stop.lng]}
             radius={804.672} // 0.5 miles in meters
             pathOptions={{
-              color: "#f59e0b",
-              fillColor: "#f59e0b",
+              color: "#ff3ec8", // Neon pink border
+              fillColor: "#ff3ec8", // Neon pink fill
               fillOpacity: 0.05,
-              weight: 1.2,
-              dashArray: "5, 5",
+              weight: 1.5,
+              dashArray: "5, 6",
             }}
           />
         ))}
@@ -194,8 +195,8 @@ export function OutageMap({
 
 export function MapLegend({ showAdvocateHotspots = false }: { showAdvocateHotspots?: boolean }) {
   const items = [
-    { color: "#ef4444", label: "Active outage" },
-    { color: "#f59e0b", label: "At-risk care stop" },
+    { color: "#f43f5e", label: "Active outage" },
+    { color: "#fbbf24", label: "At-risk care stop" },
     { color: "#0ea5e9", label: "Provider depot" },
     ...(showAdvocateHotspots ? [{ color: "#ff3ec8", label: "Elevator Advocate hotspot" }] : []),
   ];
