@@ -84,10 +84,7 @@ body {
   display: block;
   width: 1.7rem;
   height: 1.7rem;
-  border-radius: 0.4rem;
-  background: #0f172a;
-  object-fit: cover;
-  box-shadow: 0 0 24px rgba(56, 189, 248, 0.38);
+  object-fit: contain;
 }
 
 .landing__skip {
@@ -135,10 +132,7 @@ body {
   width: clamp(3rem, 5vw, 4.35rem);
   height: clamp(3rem, 5vw, 4.35rem);
   margin-bottom: 1rem;
-  border-radius: 1rem;
-  background: #0f172a;
-  object-fit: cover;
-  box-shadow: 0 22px 54px -18px rgba(56, 189, 248, 0.72);
+  object-fit: contain;
 }
 
 .landing__eyebrow {
@@ -322,6 +316,19 @@ body {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-shadow: 0 0 10px rgba(255, 54, 93, 0.78);
+  transition:
+    color 200ms ease,
+    text-shadow 200ms ease;
+}
+
+.landing-floor-panel__screen[data-direction="up"] strong {
+  color: #56ff7b;
+  text-shadow: 0 0 10px rgba(86, 255, 123, 0.78);
+}
+
+.landing-floor-panel__screen[data-direction="idle"] strong {
+  color: rgba(255, 255, 255, 0.42);
+  text-shadow: none;
 }
 
 .landing-floor-panel__rows {
