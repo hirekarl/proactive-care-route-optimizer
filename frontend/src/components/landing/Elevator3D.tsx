@@ -1,4 +1,4 @@
-import { MeshReflectorMaterial, useScroll } from "@react-three/drei";
+import { Html, MeshReflectorMaterial, useScroll } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 
@@ -37,7 +37,6 @@ export function Elevator3D() {
   const leftDoorRef = useRef<Group>(null);
   const rightDoorRef = useRef<Group>(null);
   const screenMatRef = useRef<MeshStandardMaterial>(null);
-  const callButtonRef = useRef<MeshStandardMaterial>(null);
   const [doorsOpen, setDoorsOpen] = useState(false);
 
   useFrame(({ clock }) => {
@@ -73,9 +72,6 @@ export function Elevator3D() {
     if (screenMatRef.current) {
       screenMatRef.current.emissiveIntensity = 1.2 + Math.sin(t * 1.1) * 0.18;
     }
-    if (callButtonRef.current) {
-      callButtonRef.current.emissiveIntensity = 2.6 + Math.sin(t * 2.2) * 0.75;
-    }
     if (cabinRef.current) {
       cabinRef.current.position.y = cabinLocalYAt(scroll.offset);
     }
@@ -107,7 +103,7 @@ export function Elevator3D() {
         />
       </group>
 
-      <CallPanel buttonMatRef={callButtonRef} />
+      <CallPanel />
     </group>
   );
 }
@@ -789,53 +785,31 @@ function DoorLeaf({
   );
 }
 
-interface CallPanelProps {
-  buttonMatRef: RefObject<MeshStandardMaterial | null>;
-}
-
-function CallPanel({ buttonMatRef }: CallPanelProps) {
+function CallPanel() {
   const halfW = SHAFT_WIDTH / 2;
   const halfD = SHAFT_DEPTH / 2;
 
   return (
     <group position={[-halfW - 0.03, 1.2, halfD + 0.08]}>
       <MetalBox position={[0, 0, 0]} args={[0.18, 0.42, 0.06]} color="#0a0a0d" />
-      <mesh
-        position={[0, 0.04, 0.04]}
-        onPointerOver={() => {
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = "auto";
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (landingScrollState.scrollElement) {
-            landingScrollState.scrollElement.scrollTo({
-              top: 0,
-              behavior: "smooth",
-            });
-          }
-        }}
-      >
-        <boxGeometry args={[0.12, 0.12, 0.022]} />
-        <meshStandardMaterial
-          ref={buttonMatRef}
-          color="#b66cff"
-          emissive="#9d4edd"
-          emissiveIntensity={2.6}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh position={[0, 0.04, 0.055]}>
-        <circleGeometry args={[0.036, 24]} />
-        <meshStandardMaterial
-          color="#f3e8ff"
-          emissive="#ffffff"
-          emissiveIntensity={0.9}
-          toneMapped={false}
-        />
-      </mesh>
+      <Html transform position={[0, 0.04, 0.032]} center distanceFactor={0.5}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (landingScrollState.scrollElement) {
+              landingScrollState.scrollElement.scrollTo({
+                top: 0,
+                behavior: "smooth",
+              });
+            }
+          }}
+          className="flex h-12 w-12 cursor-pointer select-none items-center justify-center rounded border-2 border-white bg-[#b66cff] text-lg font-black text-white shadow-[0_0_15px_#9d4edd,_inset_0_0_8px_#ffffff] transition-all hover:scale-[1.08] active:scale-[0.94]"
+          style={{ pointerEvents: "auto" }}
+          title="Go to 6th floor"
+        >
+          &uarr;
+        </button>
+      </Html>
     </group>
   );
 }
