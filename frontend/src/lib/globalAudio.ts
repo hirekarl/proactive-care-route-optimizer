@@ -7,12 +7,14 @@ export const globalAudio: {
   isPlaying: boolean;
   isSpeaking: boolean;
   fadeTarget: number;
+  hasInteracted: boolean;
 } = {
   bgAudio: null,
   narrationAudio: null,
   isPlaying: false,
   isSpeaking: false,
   fadeTarget: DEFAULT_BG_VOLUME,
+  hasInteracted: false,
 };
 
 let volumeLoopStarted = false;
@@ -81,10 +83,52 @@ export const initGlobalAudio = () => {
 
   globalAudio.narrationAudio = narrationAudio;
   startVolumeLoop();
+
+  // Auto-start background music on first user interaction to bypass autoplay restrictions!
+  const startOnInteraction = () => {
+    if (globalAudio.hasInteracted) {
+      cleanupListeners();
+      return;
+    }
+    globalAudio.hasInteracted = true;
+    cleanupListeners();
+
+    globalAudio.isPlaying = true;
+    globalAudio.fadeTarget = DEFAULT_BG_VOLUME;
+    if (globalAudio.bgAudio) {
+      globalAudio.bgAudio.volume = 0.0;
+      globalAudio.bgAudio
+        .play()
+        .then(() => {
+          window.dispatchEvent(new Event("global-audio-change"));
+        })
+        .catch((err) => {
+          console.warn("Autoplay blocked even after interaction:", err);
+          globalAudio.isPlaying = false;
+          globalAudio.hasInteracted = false;
+          window.dispatchEvent(new Event("global-audio-change"));
+        });
+    }
+  };
+
+  const cleanupListeners = () => {
+    window.removeEventListener("click", startOnInteraction);
+    window.removeEventListener("scroll", startOnInteraction);
+    window.removeEventListener("mousedown", startOnInteraction);
+    window.removeEventListener("touchstart", startOnInteraction);
+    window.removeEventListener("wheel", startOnInteraction);
+  };
+
+  window.addEventListener("click", startOnInteraction);
+  window.addEventListener("scroll", startOnInteraction, { passive: true });
+  window.addEventListener("mousedown", startOnInteraction);
+  window.addEventListener("touchstart", startOnInteraction, { passive: true });
+  window.addEventListener("wheel", startOnInteraction, { passive: true });
 };
 
 export const toggleGlobalAudio = () => {
   initGlobalAudio();
+  globalAudio.hasInteracted = true; // Mark as interacted so auto-start never overrides manual mute
   if (!globalAudio.bgAudio || !globalAudio.narrationAudio) return;
 
   if (globalAudio.isPlaying) {
