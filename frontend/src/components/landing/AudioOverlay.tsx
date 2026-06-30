@@ -92,11 +92,31 @@ export function AudioOverlay() {
     return () => cancelAnimationFrame(frameId);
   }, [isPlaying]);
 
-  // Determine active beat based on offset
-  const activeBeat = useMemo(() => {
-    if (offset <= 0.05) return 0; // Beat 0: Hero
-    return nearestLandingFloor(offset).floor; // Beat 1-6
+  // Determine active floor (0 for Hero, 1-6 for floors)
+  const activeFloor = useMemo(() => {
+    if (offset <= 0.05) return 0; // Hero
+    return nearestLandingFloor(offset).floor; // Floor 1 to 6
   }, [offset]);
+
+  // Map floor number to the correct pre-recorded audio beat index
+  const activeBeatIndex = useMemo(() => {
+    if (activeFloor === 0) return 0; // Hero -> Beat 0
+    // Floor 6 (Dashboard) -> Beat 1
+    // Floor 5 (Outage Map) -> Beat 2
+    // Floor 4 (DOB Feed) -> Beat 3
+    // Floor 3 (Providers) -> Beat 4
+    // Floor 2 (Elevator Advocate) -> Beat 5
+    // Floor 1 (Senior-Care EDA) -> Beat 6
+    const mapping: Record<number, number> = {
+      6: 1,
+      5: 2,
+      4: 3,
+      3: 4,
+      2: 5,
+      1: 6,
+    };
+    return mapping[activeFloor] ?? 0;
+  }, [activeFloor]);
 
   // Play pre-recorded narration beat and duck background music
   const playNarrationBeat = (beatIndex: number) => {
@@ -130,11 +150,11 @@ export function AudioOverlay() {
       return;
     }
 
-    if (lastSpokenBeat.current !== activeBeat) {
-      lastSpokenBeat.current = activeBeat;
-      playNarrationBeat(activeBeat);
+    if (lastSpokenBeat.current !== activeBeatIndex) {
+      lastSpokenBeat.current = activeBeatIndex;
+      playNarrationBeat(activeBeatIndex);
     }
-  }, [activeBeat, isPlaying]);
+  }, [activeBeatIndex, isPlaying]);
 
   // Handle play/mute toggle click
   const toggleAudio = () => {
@@ -156,7 +176,7 @@ export function AudioOverlay() {
       });
 
       // Play current active floor beat narration
-      playNarrationBeat(activeBeat);
+      playNarrationBeat(activeBeatIndex);
     }
   };
 
@@ -212,7 +232,7 @@ export function AudioOverlay() {
         <span className="landing-audio-widget__title">
           {isPlaying
             ? isSpeaking
-              ? `Floor ${activeBeat === 0 ? "G" : activeBeat} Narration`
+              ? `Floor ${activeFloor === 0 ? "G" : activeFloor} Narration`
               : "Rise Up (Ambient)"
             : "Click to Listen"}
         </span>
