@@ -449,13 +449,20 @@ class TestIngestDFTA:
                 return r
 
             mock_get.side_effect = side_effect
-            call_command("ingest_dfta", verbosity=0)
+            call_command("ingest_dfta", skip_providers=True, verbosity=0)
 
         from api.models import DFTASeniorCenter
 
         assert DFTASeniorCenter.objects.filter(center_id="SC-INGEST-1").exists()
         sc = DFTASeniorCenter.objects.get(center_id="SC-INGEST-1")
         assert sc.lat == pytest.approx(40.758)
+
+    _SC_STUB = {
+        "facilityid": "SC-STUB",
+        "name": "Stub",
+        "latitude": "40.758",
+        "longitude": "-73.985",
+    }
 
     def _call_with_providers(
         self, provider_rows: list[dict[str, str]], dataset_id: str = "cwsm-2ns3"
@@ -464,7 +471,12 @@ class TestIngestDFTA:
 
         def side_effect(url: str, **kwargs: object) -> MagicMock:
             r = MagicMock()
-            r.json.return_value = provider_rows if dataset_id in url else []
+            if "ygfr-ij6t" in url:
+                r.json.return_value = [self._SC_STUB]
+            elif dataset_id in url:
+                r.json.return_value = provider_rows
+            else:
+                r.json.return_value = []
             return r
 
         with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
@@ -605,7 +617,7 @@ class TestIngestDFTA:
 
         with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
             mock_get.side_effect = side_effect
-            call_command("ingest_dfta", verbosity=0)
+            call_command("ingest_dfta", skip_providers=True, verbosity=0)
 
         assert DFTASeniorCenter.objects.count() == 0
 
@@ -625,7 +637,7 @@ class TestIngestDFTA:
         with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
             mock_get.side_effect = side_effect
             with patch("api.management.commands.ingest_dfta.geocode_address", return_value=None):
-                call_command("ingest_dfta", verbosity=0)
+                call_command("ingest_dfta", skip_providers=True, verbosity=0)
 
         assert not DFTASeniorCenter.objects.filter(center_id="SC-NO-COORDS").exists()
 
@@ -639,7 +651,12 @@ class TestIngestDFTA:
 
         def side_effect(url: str, **kwargs: object) -> MagicMock:
             r = MagicMock()
-            r.json.return_value = [bad_row] if "test-ds" in url else []
+            if "ygfr-ij6t" in url:
+                r.json.return_value = [self._SC_STUB]
+            elif "test-ds" in url:
+                r.json.return_value = [bad_row]
+            else:
+                r.json.return_value = []
             return r
 
         with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:

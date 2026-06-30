@@ -74,7 +74,6 @@ export function OutageMap({
           />
         ))}
 
-        {/* Provider Depots Markers */}
         {providers.map((provider) => (
           <Marker
             key={`provider-${provider.id}`}
@@ -96,7 +95,6 @@ export function OutageMap({
           </Marker>
         ))}
 
-        {/* DFTA Care Stop Markers */}
         {stops.map((stop) => (
           <Marker key={`stop-${stop.id}`} position={[stop.lat, stop.lng]} icon={stopIcon}>
             <Popup>
@@ -119,7 +117,6 @@ export function OutageMap({
           </Marker>
         ))}
 
-        {/* Active Elevator Outage Markers */}
         {outages.map((outage) => (
           <Marker
             key={`outage-${outage.id}`}
@@ -156,7 +153,6 @@ export function OutageMap({
           </Marker>
         ))}
 
-        {/* Elevator Advocate Hotspots Markers */}
         {advocateHotspots.map((building) => (
           <Marker
             key={`hotspot-${building.bin}`}

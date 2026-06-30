@@ -42,7 +42,6 @@ export function Elevator3D() {
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    // Automatically open doors when cabin reaches the bottom floor (scroll offset > 0.975)
     const isAtBottom = scroll.offset > 0.975;
     if (isAtBottom !== doorsOpen) {
       setDoorsOpen(isAtBottom);
@@ -66,7 +65,6 @@ export function Elevator3D() {
       );
     }
 
-    // Share door opening progress globally (value between 0.0 and 1.0)
     landingScrollState.doorsOpenProgress = Math.max(0, Math.min(1, currentOpen / 1.12));
 
     if (screenMatRef.current) {

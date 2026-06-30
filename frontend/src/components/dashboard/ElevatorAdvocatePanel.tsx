@@ -1,9 +1,11 @@
 import { elevatorAdvocateStats } from "../../api/elevatorAdvocateData";
 
 const topBuildingCount = Math.max(
+  1,
   ...elevatorAdvocateStats.topBuildings.map((building) => building.count)
 );
 const maxMonthlyCount = Math.max(
+  1,
   ...elevatorAdvocateStats.monthlyCurrentYear.map((month) => month.count)
 );
 
