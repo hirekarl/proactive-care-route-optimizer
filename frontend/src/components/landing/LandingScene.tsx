@@ -8,15 +8,10 @@ import type { Group, PerspectiveCamera } from "three";
 import { MathUtils, Vector3 } from "three";
 
 import { Elevator3D } from "./Elevator3D";
-import { CARD_ORBIT_POSITIONS } from "./cardOrbit";
+import { cabinWorldYAt, landingFloors } from "./landingFloors";
 import { landingScrollState } from "./landingScrollState";
 
-const PAGES = 8;
-const SHAFT_HEIGHT = 9.6;
-const ELEVATOR_BASE_Y = -SHAFT_HEIGHT / 2 + 0.15;
-const CABIN_TOP_Y = 6.0;
-const CABIN_LANDING_Y = 0.12;
-const CABIN_TRAVEL_END_SCROLL = 0.58;
+const PAGES = 6;
 const IDLE_ORBIT_EXIT_SCROLL = 0.035;
 
 interface LandingSceneProps {
@@ -127,8 +122,20 @@ function ScrollableScene({ selectedTab }: ScrollableSceneProps) {
   const currentLook = useMemo(() => new Vector3(0, 2.45, 0), []);
   const targetZoomOutPos = useMemo(() => new Vector3(4.8, 3.65, 7.6), []);
   const targetZoomOutLook = useMemo(() => new Vector3(0, 0.45, 0), []);
-  const cardVecs = useMemo(() => CARD_ORBIT_POSITIONS.map(([x, y, z]) => new Vector3(x, y, z)), []);
-  const keys = useMemo(() => buildKeyframes(cardVecs), [cardVecs]);
+  const floorVecs = useMemo(() => landingFloors.map((floor) => new Vector3(...floor.position)), []);
+  const keys = useMemo(() => buildKeyframes(floorVecs), [floorVecs]);
+
+  useEffect(() => {
+    landingScrollState.scrollElement = scroll.el;
+    landingScrollState.offset = 0;
+    scroll.el.scrollTop = 0;
+
+    return () => {
+      if (landingScrollState.scrollElement === scroll.el) {
+        landingScrollState.scrollElement = null;
+      }
+    };
+  }, [scroll.el]);
 
   useEffect(() => {
     const pCam = camera as PerspectiveCamera;
@@ -190,36 +197,41 @@ interface CamKey {
   look: [number, number, number];
 }
 
-function buildKeyframes(cards: Vector3[]): CamKey[] {
+function buildKeyframes(floors: Vector3[]): CamKey[] {
   const keys: CamKey[] = [];
 
   keys.push({ t: 0.0, pos: [2.75, 1.55, 6.7], look: [-0.42, 1.88, 0] });
   keys.push({ t: 0.04, pos: [2.95, 2.75, 6.85], look: [-0.32, 1.95, 0] });
 
-  const startT = 0.05;
-  const endT = 0.86;
-  const totalSpan = endT - startT;
-
-  for (let i = 0; i < cards.length; i += 1) {
-    const tZoom = startT + totalSpan * ((i + 0.5) / cards.length);
-    const tCrawl = startT + totalSpan * ((i + 1) / cards.length);
-    const card = cards[i];
-    const radius = Math.hypot(card.x, card.z);
+  for (let i = 0; i < floors.length; i += 1) {
+    const floor = floors[i];
+    const floorStop = landingFloors[i];
+    const radius = Math.hypot(floor.x, floor.z);
     const zoomScale = (radius + 3.05) / Math.max(radius, 0.001);
     const camZoom: [number, number, number] = [
-      card.x * zoomScale,
-      card.y + 0.12,
-      card.z * zoomScale,
+      floor.x * zoomScale,
+      floor.y + 0.12,
+      floor.z * zoomScale,
     ];
 
-    keys.push({ t: tZoom - 0.035, pos: camZoom, look: [card.x, card.y, card.z] });
-    keys.push({ t: tZoom + 0.04, pos: camZoom, look: [card.x, card.y, card.z] });
+    keys.push({
+      t: floorStop.scrollOffset - 0.035,
+      pos: camZoom,
+      look: [floor.x, floor.y, floor.z],
+    });
+    keys.push({
+      t: floorStop.scrollOffset + 0.04,
+      pos: camZoom,
+      look: [floor.x, floor.y, floor.z],
+    });
 
-    if (i < cards.length - 1) {
-      const next = cards[i + 1];
-      const midX = (card.x + next.x) / 2;
-      const midZ = (card.z + next.z) / 2;
-      const midY = (card.y + next.y) / 2;
+    if (i < floors.length - 1) {
+      const next = floors[i + 1];
+      const nextStop = landingFloors[i + 1];
+      const tCrawl = (floorStop.scrollOffset + nextStop.scrollOffset) / 2;
+      const midX = (floor.x + next.x) / 2;
+      const midZ = (floor.z + next.z) / 2;
+      const midY = (floor.y + next.y) / 2;
       const midRadius = Math.hypot(midX, midZ);
       const crawlScale = (midRadius + 5.15) / Math.max(midRadius, 0.001);
       const crawlPos: [number, number, number] = [
@@ -233,22 +245,11 @@ function buildKeyframes(cards: Vector3[]): CamKey[] {
     }
   }
 
-  keys.push({ t: 0.9, pos: [-3.1, -0.25, 5.2], look: [0, -2.55, 0] });
-  keys.push({ t: 0.96, pos: [3.25, -0.05, 5.35], look: [0, -2.65, 0] });
-  keys.push({ t: 1.0, pos: [0.65, 0.15, 6.1], look: [0, -2.7, 0] });
+  keys.push({ t: 0.97, pos: [0.65, 0.15, 6.1], look: [0, -2.7, 0] });
+  keys.push({ t: 1.0, pos: [2.3, 0.25, 5.7], look: [0, -2.65, 0] });
 
   keys.sort((a, b) => a.t - b.t);
   return keys;
-}
-
-function cabinWorldYAt(scrollOffset: number): number {
-  const cabinProgress = MathUtils.smoothstep(
-    MathUtils.clamp(scrollOffset / CABIN_TRAVEL_END_SCROLL, 0, 1),
-    0,
-    1
-  );
-
-  return ELEVATOR_BASE_Y + MathUtils.lerp(CABIN_TOP_Y, CABIN_LANDING_Y, cabinProgress);
 }
 
 function sampleKeys(keys: CamKey[], t: number, outPos: Vector3, outLook: Vector3): void {

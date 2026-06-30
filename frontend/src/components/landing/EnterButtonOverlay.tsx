@@ -13,7 +13,7 @@ export function EnterButtonOverlay({ onEnter }: EnterButtonOverlayProps) {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const opacity = Math.max(0, Math.min(1, (landingScrollState.offset - 0.82) * 6));
+      const opacity = Math.max(0, Math.min(1, (landingScrollState.offset - 0.93) * 12));
       if (buttonRef.current) {
         buttonRef.current.style.opacity = opacity.toFixed(3);
         const lift = (1 - opacity) * 24;
@@ -39,7 +39,7 @@ export function EnterButtonOverlay({ onEnter }: EnterButtonOverlayProps) {
       >
         <span className="enter-button__inner">
           <span className="enter-button__chev" aria-hidden="true">
-            ↓
+            &darr;
           </span>
           Enter Dispatcher Dashboard
         </span>
