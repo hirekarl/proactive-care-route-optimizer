@@ -5,10 +5,14 @@ import { elevatorAdvocateStats } from "../api/elevatorAdvocateData";
 import { Header } from "../components/layout/Header";
 import { Badge } from "../components/ui/Badge";
 import { Card } from "../components/ui/Card";
+import { Pagination } from "../components/ui/Pagination";
 import { StateBlock } from "../components/ui/StateBlock";
 import { useApi } from "../hooks/useApi";
+import { usePagination } from "../hooks/usePagination";
 import { formatDate } from "../lib/format";
 import type { Borough } from "../types";
+
+const OUTAGES_PAGE_SIZE = 50;
 
 const BOROUGHS: (Borough | "All")[] = [
   "All",
@@ -32,6 +36,8 @@ export function OutagesPage() {
     () => (outages.data ?? []).filter((o) => borough === "All" || o.borough === borough),
     [outages.data, borough]
   );
+
+  const paged = usePagination(filtered, OUTAGES_PAGE_SIZE);
 
   const selectedBoroughStats =
     borough === "All"
@@ -169,7 +175,7 @@ export function OutagesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((o) => (
+                  {paged.pageItems.map((o) => (
                     <tr key={o.id} className="border-b border-white/5 last:border-0">
                       <td className="py-2.5 pr-4 font-mono text-xs text-slate-500">
                         {o.complaintNumber}
@@ -196,6 +202,19 @@ export function OutagesPage() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={paged.page}
+                pageCount={paged.pageCount}
+                total={paged.total}
+                firstShown={paged.firstShown}
+                lastShown={paged.lastShown}
+                canPrev={paged.canPrev}
+                canNext={paged.canNext}
+                onPrev={paged.prev}
+                onNext={paged.next}
+                onGoTo={paged.goTo}
+                itemLabel="complaints"
+              />
             </div>
           )}
         </Card>

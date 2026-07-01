@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 
 import type { ElevatorAdvocateTopBuilding } from "../../api/elevatorAdvocateData";
 import type { Outage, Provider, RouteStop } from "../../types";
+import { MarkerClusterGroup } from "./MarkerClusterGroup";
 
 interface OutageMapProps {
   outages: Outage[];
@@ -74,119 +75,121 @@ export function OutageMap({
           />
         ))}
 
-        {providers.map((provider) => (
-          <Marker
-            key={`provider-${provider.id}`}
-            position={[provider.lat, provider.lng]}
-            icon={providerIcon}
-          >
-            <Popup>
-              <div className="p-0.5 font-sans text-xs">
-                <h3 className="text-sm font-bold leading-tight text-sky-400">{provider.name}</h3>
-                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                  {provider.borough} Depot
-                </p>
-                <div className="my-2 border-t border-white/10" />
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Address:</strong> {provider.address}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-
-        {stops.map((stop) => (
-          <Marker key={`stop-${stop.id}`} position={[stop.lat, stop.lng]} icon={stopIcon}>
-            <Popup>
-              <div className="p-0.5 font-sans text-xs">
-                <h3 className="text-sm font-bold leading-tight text-amber-400">
-                  {stop.recipientName}
-                </h3>
-                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                  DFTA Care Recipient
-                </p>
-                <div className="my-2 border-t border-white/10" />
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Address:</strong> {stop.address}
-                </p>
-                <p className="mt-1 text-slate-300">
-                  <strong className="text-slate-400">Floor:</strong> {stop.floor}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-
-        {outages.map((outage) => (
-          <Marker
-            key={`outage-${outage.id}`}
-            position={[outage.lat, outage.lng]}
-            icon={outage.singleElevator ? singleElevatorIcon : outageIcon}
-          >
-            <Popup>
-              <div className="p-0.5 font-sans text-xs">
-                <h3 className="text-sm font-bold leading-tight text-rose-400">Active Outage</h3>
-                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                  DOB Complaint #{outage.complaintNumber}
-                </p>
-                <div className="my-2 border-t border-white/10" />
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Address:</strong> {outage.address}
-                </p>
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Borough:</strong> {outage.borough}
-                </p>
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {outage.singleElevator && (
-                    <span className="rounded border border-red-500/20 bg-red-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">
-                      Single Elevator Bldg
-                    </span>
-                  )}
-                  {outage.chronicOffender && (
-                    <span className="rounded border border-purple-500/20 bg-purple-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300">
-                      Chronic Offender
-                    </span>
-                  )}
+        <MarkerClusterGroup>
+          {providers.map((provider) => (
+            <Marker
+              key={`provider-${provider.id}`}
+              position={[provider.lat, provider.lng]}
+              icon={providerIcon}
+            >
+              <Popup>
+                <div className="p-0.5 font-sans text-xs">
+                  <h3 className="text-sm font-bold leading-tight text-sky-400">{provider.name}</h3>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                    {provider.borough} Depot
+                  </p>
+                  <div className="my-2 border-t border-white/10" />
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Address:</strong> {provider.address}
+                  </p>
                 </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          ))}
 
-        {advocateHotspots.map((building) => (
-          <Marker
-            key={`hotspot-${building.bin}`}
-            position={[building.lat, building.lng]}
-            icon={hotspotIcon}
-          >
-            <Popup>
-              <div className="p-0.5 font-sans text-xs">
-                <h3 className="text-sm font-bold leading-tight text-fuchsia-400">
-                  Vulnerability Hotspot
-                </h3>
-                <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
-                  {building.address}
-                </p>
-                <div className="my-2 border-t border-white/10" />
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Borough:</strong> {building.borough} (CD{" "}
-                  {building.councilDistrict})
-                </p>
-                <p className="text-slate-300">
-                  <strong className="text-slate-400">Complaints (3yr):</strong> {building.count}
-                </p>
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <span className="rounded border border-fuchsia-500/20 bg-fuchsia-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
-                    Risk: {building.riskScore.toFixed(2)}
-                  </span>
-                  <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
-                    Conf: {building.riskConfidence}%
-                  </span>
+          {stops.map((stop) => (
+            <Marker key={`stop-${stop.id}`} position={[stop.lat, stop.lng]} icon={stopIcon}>
+              <Popup>
+                <div className="p-0.5 font-sans text-xs">
+                  <h3 className="text-sm font-bold leading-tight text-amber-400">
+                    {stop.recipientName}
+                  </h3>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                    DFTA Care Recipient
+                  </p>
+                  <div className="my-2 border-t border-white/10" />
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Address:</strong> {stop.address}
+                  </p>
+                  <p className="mt-1 text-slate-300">
+                    <strong className="text-slate-400">Floor:</strong> {stop.floor}
+                  </p>
                 </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          ))}
+
+          {outages.map((outage) => (
+            <Marker
+              key={`outage-${outage.id}`}
+              position={[outage.lat, outage.lng]}
+              icon={outage.singleElevator ? singleElevatorIcon : outageIcon}
+            >
+              <Popup>
+                <div className="p-0.5 font-sans text-xs">
+                  <h3 className="text-sm font-bold leading-tight text-rose-400">Active Outage</h3>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                    DOB Complaint #{outage.complaintNumber}
+                  </p>
+                  <div className="my-2 border-t border-white/10" />
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Address:</strong> {outage.address}
+                  </p>
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Borough:</strong> {outage.borough}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {outage.singleElevator && (
+                      <span className="rounded border border-red-500/20 bg-red-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">
+                        Single Elevator Bldg
+                      </span>
+                    )}
+                    {outage.chronicOffender && (
+                      <span className="rounded border border-purple-500/20 bg-purple-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300">
+                        Chronic Offender
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {advocateHotspots.map((building) => (
+            <Marker
+              key={`hotspot-${building.bin}`}
+              position={[building.lat, building.lng]}
+              icon={hotspotIcon}
+            >
+              <Popup>
+                <div className="p-0.5 font-sans text-xs">
+                  <h3 className="text-sm font-bold leading-tight text-fuchsia-400">
+                    Vulnerability Hotspot
+                  </h3>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                    {building.address}
+                  </p>
+                  <div className="my-2 border-t border-white/10" />
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Borough:</strong> {building.borough} (CD{" "}
+                    {building.councilDistrict})
+                  </p>
+                  <p className="text-slate-300">
+                    <strong className="text-slate-400">Complaints (3yr):</strong> {building.count}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    <span className="rounded border border-fuchsia-500/20 bg-fuchsia-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300">
+                      Risk: {building.riskScore.toFixed(2)}
+                    </span>
+                    <span className="rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
+                      Conf: {building.riskConfidence}%
+                    </span>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MarkerClusterGroup>
       </MapContainer>
     </div>
   );

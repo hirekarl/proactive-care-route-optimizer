@@ -4,8 +4,12 @@ import { api } from "../api/client";
 import { elevatorAdvocateStats } from "../api/elevatorAdvocateData";
 import { Header } from "../components/layout/Header";
 import { Card } from "../components/ui/Card";
+import { Pagination } from "../components/ui/Pagination";
 import { StateBlock } from "../components/ui/StateBlock";
 import { useApi } from "../hooks/useApi";
+import { usePagination } from "../hooks/usePagination";
+
+const PROVIDERS_PAGE_SIZE = 24;
 
 const maxBoroughComplaintShare = Math.max(
   ...elevatorAdvocateStats.boroughBreakdown.map((entry) => entry.pct)
@@ -14,18 +18,18 @@ const maxBoroughComplaintShare = Math.max(
 export function ProvidersPage() {
   const providers = useApi(api.getProviders);
 
+  const providerList = useMemo(() => providers.data ?? [], [providers.data]);
+  const paged = usePagination(providerList, PROVIDERS_PAGE_SIZE);
+
   const exposure = useMemo(() => {
-    const currentProviders = providers.data ?? [];
     return elevatorAdvocateStats.boroughBreakdown.map((entry) => {
-      const boroughProviders = currentProviders.filter(
-        (provider) => provider.borough === entry.name
-      );
+      const boroughProviders = providerList.filter((provider) => provider.borough === entry.name);
       return {
         ...entry,
         providerCount: boroughProviders.length,
       };
     });
-  }, [providers.data]);
+  }, [providerList]);
 
   return (
     <>
@@ -85,21 +89,36 @@ export function ProvidersPage() {
               </div>
             </Card>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {(providers.data ?? []).map((p) => (
-                <Card key={p.id}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-white">{p.name}</h3>
-                      <p className="mt-0.5 text-xs text-slate-500">{p.borough}</p>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {paged.pageItems.map((p) => (
+                  <Card key={p.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">{p.name}</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">{p.borough}</p>
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs font-medium text-slate-400">
+                        Contracted
+                      </span>
                     </div>
-                    <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-xs font-medium text-slate-400">
-                      Contracted
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-400">{p.address}</p>
-                </Card>
-              ))}
+                    <p className="mt-3 text-sm text-slate-400">{p.address}</p>
+                  </Card>
+                ))}
+              </div>
+              <Pagination
+                page={paged.page}
+                pageCount={paged.pageCount}
+                total={paged.total}
+                firstShown={paged.firstShown}
+                lastShown={paged.lastShown}
+                canPrev={paged.canPrev}
+                canNext={paged.canNext}
+                onPrev={paged.prev}
+                onNext={paged.next}
+                onGoTo={paged.goTo}
+                itemLabel="providers"
+              />
             </div>
           </>
         )}
