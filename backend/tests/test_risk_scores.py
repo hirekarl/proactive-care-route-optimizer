@@ -666,6 +666,29 @@ class TestIngestDFTA:
 
         assert not DFTAProvider.objects.filter(provider_id="P-NO-COORDS").exists()
 
+    def test_ingest_providers_cqc8_am9x_field_names(self) -> None:
+        """cqc8-am9x rows use dfta_id, sponsorname, programaddress — all three stored correctly."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "dfta_id": "P-CQC-001",
+                    "sponsorname": "Bronx Senior Services",
+                    "programaddress": "1234 Grand Concourse",
+                    "latitude": "40.858",
+                    "longitude": "-73.925",
+                }
+            ],
+            dataset_id="cqc8-am9x",
+        )
+
+        assert DFTAProvider.objects.filter(provider_id="P-CQC-001").exists()
+        p = DFTAProvider.objects.get(provider_id="P-CQC-001")
+        assert p.name == "Bronx Senior Services"
+        assert p.address == "1234 Grand Concourse"
+        assert p.lat == pytest.approx(40.858)
+
     def test_coords_from_row_falls_back_to_geocoding_on_bad_float(self) -> None:
         """_coords_from_row with non-parseable lat/lon strings geocodes the address instead."""
         from api.management.commands.ingest_dfta import Command

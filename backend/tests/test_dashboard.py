@@ -208,6 +208,7 @@ class TestDashboardSummaryView:
         resp = Client().get("/api/dashboard/summary/")
         assert resp.json()["atRiskStops"] == 0
 
+    # views.py re-raises DatabaseError when DEBUG=True; force prod behaviour
     @override_settings(DEBUG=False)
     def test_at_risk_stops_error_field_on_db_failure(self) -> None:
         today = datetime.date.today()
