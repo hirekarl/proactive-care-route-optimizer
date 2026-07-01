@@ -2,8 +2,7 @@ import type { AtRiskStop, DashboardSummary, Outage, Provider, RouteStop } from "
 import { buildAtRiskStops, dashboardSummary, outages, providers, stops } from "./mockData";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
-const _apiHost = import.meta.env.VITE_API_BASE;
-const BASE = _apiHost ? `https://${_apiHost}/api` : "/api";
+const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 async function get<T>(path: string, fallback: T): Promise<T> {
   if (USE_MOCK) {
