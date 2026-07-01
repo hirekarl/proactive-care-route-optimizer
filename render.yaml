@@ -98,3 +98,5 @@ services:
         value: "https://pcro-backend.onrender.com/api"
       - key: VITE_USE_MOCK
         value: "false"
+      - key: VITE_API_KEY
+        sync: false

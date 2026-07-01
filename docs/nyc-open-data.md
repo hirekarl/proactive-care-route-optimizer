@@ -30,8 +30,8 @@ The dataset is refreshed periodically. The field `dobrundate` (format: `YYYYMMDD
 | `zip_code` | text | `10029` | |
 | `bin` | text | `1085680` | 7-digit Building Identification Number — your join key to get coordinates |
 | `community_board` | text | `111` | 3-digit: first digit = borough code (1=Manhattan, 2=Bronx, 3=Brooklyn, 4=Queens, 5=Staten Island) |
-| `complaint_category` | text | `13` | **Always filter `= '13'` for elevator complaints.** `'51'` = boiler. Without this filter you get all DOB complaint types. |
-| `unit` | text | `BEST` | Responding DOB unit code |
+| `complaint_category` | text | `6S` | DOB complaint type code. **Do not filter on this** — elevator complaints span several codes (`63`, `6S`, `6M`, `62`, `80`, `81`, `64`, `13`, `3D`) and this list can shift over time. |
+| `unit` | text | `ELEVR` | Responding DOB unit code. **Always filter `= 'ELEVR'` for elevator complaints** — this is the reliable elevator-specific filter, verified to match 100% of active elevator complaints regardless of category code. |
 | `disposition_date` | text | `11/13/2008` | MM/DD/YYYY — when the complaint was closed |
 | `disposition_code` | text | `L2` | Inspector outcome code |
 | `inspection_date` | text | `11/13/2008` | MM/DD/YYYY — when inspector visited |
@@ -59,7 +59,7 @@ Fetch all currently active elevator complaints citywide:
 
 ```
 GET https://data.cityofnewyork.us/resource/kqwi-7ncn.json
-  ?$where=status='ACTIVE' AND complaint_category='13'
+  ?$where=status='ACTIVE' AND unit='ELEVR'
   &$select=complaint_number,bin,house_number,house_street,zip_code,date_entered,community_board
   &$limit=50000
 ```
@@ -210,7 +210,7 @@ ORDER BY distance_m ASC;
 
 ## Ingest flow summary
 
-1. **Poll** (every 5–15 minutes): Fetch all `status='ACTIVE' AND complaint_category='13'` rows from `kqwi-7ncn`. Compare `dobrundate` against your last-seen value — if unchanged, skip re-processing.
+1. **Poll** (every 5–15 minutes): Fetch all `status='ACTIVE' AND unit='ELEVR'` rows from `kqwi-7ncn`. Compare `dobrundate` against your last-seen value — if unchanged, skip re-processing.
 2. **Resolve coordinates**: For each unique BIN in the response, look up lat/lon from `e5aq-a4j2`. Fall back to GeoSearch geocoding if the BIN has no device records.
 3. **Parse dates**: Convert `date_entered` from `MM/DD/YYYY` to a proper date before inserting into Postgres.
 4. **Upsert**: Insert or update rows in `elevator_complaints` by `complaint_number`. Mark previously-ACTIVE rows as `CLOSED` if they no longer appear in the active query response.
@@ -229,7 +229,7 @@ ORDER BY distance_m ASC;
 
 | Parameter | Purpose | Example |
 |---|---|---|
-| `$where` | Filter rows | `$where=status='ACTIVE' AND complaint_category='13'` |
+| `$where` | Filter rows | `$where=status='ACTIVE' AND unit='ELEVR'` |
 | `$select` | Columns to return | `$select=bin,house_number,date_entered` |
 | `$limit` | Max rows (default 1000, max 50000) | `$limit=50000` |
 | `$offset` | Pagination | `$offset=50000` |

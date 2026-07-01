@@ -122,7 +122,7 @@ class Command(BaseCommand):
             response = httpx.get(
                 COMPLAINTS_URL,
                 params={
-                    "$where": "status='ACTIVE' AND complaint_category='13'",
+                    "$where": "status='ACTIVE' AND unit='ELEVR'",
                     "$select": (
                         "complaint_number,bin,house_number,house_street,"
                         "zip_code,date_entered,community_board"

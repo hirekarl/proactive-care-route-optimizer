@@ -404,6 +404,8 @@ The backend requires these env vars (Render generates/injects most of them via t
 | `ROUTE_API_KEY` | Set manually in Render dashboard; required by `/api/alerts/at-risk/` and `/api/routes/stops/` |
 | `SOCRATA_APP_TOKEN` | Optional; raises NYC Open Data rate limits |
 
+The frontend static site also requires `VITE_API_KEY`, set manually in the Render dashboard to the same value as the backend's `ROUTE_API_KEY`. It's baked in at build time and sent as `Authorization: Api-Key <value>` on every API request.
+
 ---
 
 ## Project Structure

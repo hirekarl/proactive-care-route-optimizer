@@ -55,7 +55,9 @@ class Command(BaseCommand):
 
         centers: list[DFTASeniorCenter] = []
         for row in rows:
-            center_id = row.get("facilityid") or row.get("bin") or row.get("objectid")
+            # dfta_id is the unique program identifier; bin is not — a single building
+            # can host multiple contract-period program entries in this dataset.
+            center_id = row.get("dfta_id") or row.get("facilityid") or row.get("objectid")
             if not center_id:
                 continue
             lonlat = self._coords_from_row(row, headers)

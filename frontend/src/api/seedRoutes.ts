@@ -73,7 +73,7 @@ export async function seedTodaysRoutes(source: RouteStop[] = mockStops): Promise
       "Content-Type": "application/json",
       Accept: "application/json",
     };
-    if (API_KEY) headers["X-API-Key"] = API_KEY;
+    if (API_KEY) headers.Authorization = `Api-Key ${API_KEY}`;
 
     const failed: string[] = [];
     for (const [routeId, routeStops] of byRoute.entries()) {
