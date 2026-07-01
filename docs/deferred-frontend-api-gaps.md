@@ -25,20 +25,29 @@ unknown buildings default to `false` (no false-positive risk flags).
 
 ## 3. `DashboardSummary.atRiskStops` — ~~always `0`~~ **CLOSED**
 
-**Closed by:** `build_at_risk_entries()` in `api/route_alerts.py`, wired into
-`DashboardSummaryView` on `mh/route-stops-api`.
+**Closed by:** `DashboardSummaryView` now queries today's `RouteStop`
+rows via `_batch_nearby_outages()` and returns the count of stops with
+≥1 active nearby outage. Will be 0 when no routes have been submitted
+for today, which is expected until a daily route-import flow exists.
+
+**Note:** The response always includes `atRiskStopsError: bool`. When `true`, the
+proximity scan failed (logged server-side) and `atRiskStops` soft-degrades to `0`.
+The frontend should distinguish this from a genuine zero.
 
 ---
 
-## 4. `DashboardSummary.providersAffected` — ~~always `0`~~ **CLOSED**
+## 4. `DashboardSummary.providersAffected` — always `0`
 
-**Closed by:** Same as Gap 3 — counts distinct providers on at-risk stops.
+**Stubbed in:** `api/views.py` (`DashboardSummaryView`)
+**Why:** Depends on Gap 3 — "providers affected" means providers who
+have at least one at-risk stop.
 
 ---
 
-## 5. `BoroughRisk.atRiskStops` — ~~always `0`~~ **CLOSED**
+## 5. `BoroughRisk.atRiskStops` — always `0`
 
-**Closed by:** Same as Gap 3 — per-borough counts from at-risk stop boroughs.
+**Stubbed in:** `api/views.py` (`DashboardSummaryView`, borough breakdown)
+**Depends on:** Adding borough attribution to `RouteStop` (a `borough` column or geo-boundary lookup). Gap 3 being closed is necessary but not sufficient — the top-level `atRiskStops` count is now live, but per-borough attribution requires knowing which borough each stop belongs to, which is not currently tracked on the model.
 
 ---
 
@@ -59,32 +68,41 @@ as `row.get("address") or house_number + " " + street_name` during
 
 ---
 
-## 8. `Provider.seniorsServed` — always `0`
+## 8. `Provider.seniorsServed` — ~~always `0`~~ **REMOVED**
 
-**Stubbed in:** `api/serializers.py` (`ProviderSerializer`)
-**Why:** "Seniors served" is not a field in the DFTA provider dataset on
-NYC Open Data. It would need to come from a separate DFTA data export or
-a manually-maintained lookup table.
-**To close:** Determine with Mitra whether this field is available in
-any source; if not, consider removing it from the `Provider` type.
-
----
-
-## 9. `GET /api/routes/stops/` — ~~not implemented; frontend uses mock~~ **CLOSED**
-
-**Closed by:** `RouteStopsListView` on `mh/route-stops-api`. Returns all stops
-for a route date (`?date=YYYY-MM-DD`, defaults to today). `RouteStop` model
-extended with `recipient_name`, `floor`, `scheduled_time`, `provider_id`, and
-`borough`; rich stop objects accepted on `POST /api/routes/`.
+**Removed by:** `refactor: remove seniorsServed field from codebase` (Mitra, `Frontend` branch).
+No machine-readable source exists in the DFTA Open Data catalog. The field was dropped
+entirely from `Provider` type (`frontend/src/types/index.ts`), mock data, `OutageMap`
+popup, `ProvidersPage` borough breakdown, `ProviderSerializer`, and the stub test in
+`test_risk_scores.py`. If a data source is confirmed later, re-add as a real field.
 
 ---
 
-## 10. `GET /api/alerts/at-risk/` — ~~endpoint blocked on Gap 9~~ **CLOSED**
+## 9. `GET /api/routes/stops/` — ~~not implemented~~ **CLOSED**
 
-**Closed by:** `AtRiskStopsView` on `mh/route-stops-api`. Screens geocoded
-stops for the requested date against active outages within 0.5 mi, applies
-`classify_severity` / `suggest_action`, and returns the joined `AtRiskStop`
-shape expected by Mitra's frontend.
+**Closed by:** `RouteStopsView` + `RouteStopFlatSerializer` (Issues #5).
+Returns all stops for a given date's routes (defaults to today).
+Requires `Authorization: Api-Key` header. Optional `?date=YYYY-MM-DD`
+param. Response shape: `id`, `routeId`, `routeName`, `routeDate`,
+`address`, `lat`, `lon`, `order`.
+
+**Note:** Fields `recipientName`, `floor`, `scheduledTime`, `providerId`
+from Mitra's `RouteStop` type are not in the model and remain absent.
+The frontend's `getStops()` will receive real data but without those
+fields until a care-recipient import flow is built.
+
+---
+
+## 10. `GET /api/alerts/at-risk/` — ~~blocked on Gap 9~~ **CLOSED**
+
+**Closed by:** `AlertsAtRiskView` + `AtRiskStopSerializer` (Issue #6).
+Returns only stops with ≥1 active nearby outage. Requires API key.
+Optional `?date=YYYY-MM-DD` param (defaults to today).
+Response shape per stop: `id`, `routeId`, `routeName`, `routeDate`,
+`address`, `lat`, `lon`, `order`, `outageAlerts` (list), `highestSeverity`.
+
+`DashboardSummary.atRiskStops` is now computed from today's stops via
+`_batch_nearby_outages()` — no longer hardcoded to 0.
 
 ---
 

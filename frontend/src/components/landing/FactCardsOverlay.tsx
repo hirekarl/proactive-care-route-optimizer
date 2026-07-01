@@ -1,0 +1,179 @@
+import type { CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { landingFloors } from "./landingFloors";
+import { landingScrollState } from "./landingScrollState";
+
+interface FactCardsOverlayProps {
+  onSelectTab: (tabIndex: number) => void;
+  previewing?: boolean;
+}
+
+const FOCUS_RANGE = 0.09;
+const ORBIT_REVEAL_START = 0.035;
+const ORBIT_REVEAL_END = 0.09;
+
+export function FactCardsOverlay({ onSelectTab, previewing = false }: FactCardsOverlayProps) {
+  const [offset, setOffset] = useState(landingScrollState.offset);
+  const [dragRotation, setDragRotation] = useState(landingScrollState.dragRotation);
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    let frameId = 0;
+    let lastOffset = landingScrollState.offset;
+    let lastRotation = landingScrollState.dragRotation;
+    const syncViewport = () => setCompact(window.innerWidth < 800);
+
+    const syncOffset = () => {
+      const nextOffset = landingScrollState.offset;
+      const nextRotation = landingScrollState.dragRotation;
+      if (Math.abs(nextOffset - lastOffset) > 0.001) {
+        lastOffset = nextOffset;
+        setOffset(nextOffset);
+      }
+      if (Math.abs(nextRotation - lastRotation) > 0.001) {
+        lastRotation = nextRotation;
+        setDragRotation(nextRotation);
+      }
+      frameId = window.requestAnimationFrame(syncOffset);
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    frameId = window.requestAnimationFrame(syncOffset);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", syncViewport);
+    };
+  }, []);
+
+  const cards = useMemo(() => {
+    const orbitReveal = Math.min(
+      1,
+      Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
+    );
+    const orbit = compact
+      ? { centerX: 50, centerY: 48, radiusX: 18, radiusY: 20, swayY: 3.6 }
+      : { centerX: 61, centerY: 50, radiusX: 24, radiusY: 22, swayY: 3.2 };
+    const yValues = landingFloors.map((floor) => floor.position[1]);
+    const maxY = Math.max(...yValues);
+    const minY = Math.min(...yValues);
+    const yRange = Math.max(maxY - minY, 0.001);
+
+    return landingFloors.map((floor) => {
+      const delta = Math.abs(offset - floor.scrollOffset);
+      const focus = Math.max(0, 1 - delta / FOCUS_RANGE);
+      const easedFocus = focus * focus * (3 - 2 * focus);
+      const [x, y, z] = floor.position;
+      const angle = Math.atan2(z, x) + dragRotation - 0.26;
+      const side = Math.sin(angle);
+      const face = Math.cos(angle);
+      const yNorm = ((y - minY) / yRange) * 2 - 1;
+      const orbitRotateY = -angle * (180 / Math.PI);
+
+      return {
+        depth: (face + 1) / 2,
+        floor,
+        focus: easedFocus,
+        orbitReveal,
+        placement: {
+          left: orbit.centerX + Math.cos(angle) * orbit.radiusX,
+          top: orbit.centerY - yNorm * orbit.radiusY + Math.sin(angle) * orbit.swayY,
+        },
+        rotateX: -yNorm * 7 + face * 3,
+        rotateY: orbitRotateY * (1 - easedFocus * 0.92),
+        rotateZ: side * 4 * (1 - easedFocus * 0.62),
+      };
+    });
+  }, [compact, dragRotation, offset]);
+
+  const orbitReveal = Math.min(
+    1,
+    Math.max(0, (offset - ORBIT_REVEAL_START) / (ORBIT_REVEAL_END - ORBIT_REVEAL_START))
+  );
+  const orbitPath = compact
+    ? { centerX: 50, centerY: 50, height: 52, width: 52 }
+    : { centerX: 61, centerY: 53, height: 60, width: 48 };
+
+  return (
+    <div
+      className="landing__cards"
+      data-previewing={previewing}
+      style={
+        {
+          "--orbit-center-x": `${orbitPath.centerX}%`,
+          "--orbit-center-y": `${orbitPath.centerY}%`,
+          "--orbit-height": `${orbitPath.height}%`,
+          "--orbit-opacity": (orbitReveal * 0.62).toFixed(3),
+          "--orbit-width": `${orbitPath.width}%`,
+        } as CSSProperties
+      }
+    >
+      <div className="landing__orbit-path" aria-hidden="true" />
+      {cards.map(({ depth, floor, focus, orbitReveal, placement, rotateX, rotateY, rotateZ }) => {
+        const active = focus > 0.42;
+        const cardOpacity = orbitReveal * focus * focus;
+        const cardScale = 0.74 + focus * 0.28;
+        const cardY = (1 - focus) * 14;
+        const orbitDepth = Math.round(8 + depth * 4 + focus * 12);
+        const openFloor = () => {
+          if (floor.kind === "external" && floor.href) {
+            window.open(floor.href, "_blank", "noopener,noreferrer");
+            return;
+          }
+
+          if (floor.tabIndex !== undefined) {
+            onSelectTab(floor.tabIndex);
+          }
+        };
+
+        return (
+          <button
+            key={floor.id}
+            className="landing__card glass-card group"
+            type="button"
+            data-active={active}
+            disabled={previewing || !active || orbitReveal < 0.95}
+            aria-label={`Open ${floor.eyebrow}`}
+            onClick={openFloor}
+            style={
+              {
+                "--accent": floor.hue,
+                "--focus": cardOpacity.toFixed(3),
+                "--card-scale": cardScale.toFixed(3),
+                "--card-y": `${cardY.toFixed(1)}px`,
+                "--card-left": `${placement.left}%`,
+                "--card-top": `${placement.top}%`,
+                "--card-rotate-x": `${rotateX.toFixed(1)}deg`,
+                "--card-rotate-y": `${rotateY.toFixed(1)}deg`,
+                "--card-rotate-z": `${rotateZ.toFixed(1)}deg`,
+                zIndex: orbitDepth,
+              } as CSSProperties
+            }
+          >
+            <div className="glass-card__eyebrow">
+              <span className="glass-card__dot" />
+              Floor {floor.floor} / {floor.eyebrow}
+            </div>
+            <div className="glass-card__value text-glow">{floor.value}</div>
+            <div className="glass-card__label">{floor.label}</div>
+            <p className="glass-card__detail">{floor.detail}</p>
+            <div className="glass-card__action">
+              <span>{floor.kind === "external" ? "Open site" : "Open tab"}</span>
+              <svg
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="2.5"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

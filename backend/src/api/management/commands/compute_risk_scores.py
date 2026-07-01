@@ -1,7 +1,6 @@
 """Compute per-building composite vulnerability score and heat correlation metrics."""
 
 import datetime
-import math
 from typing import Any
 
 import pandas as pd
@@ -10,26 +9,12 @@ from django.db import connection, transaction
 from scipy import stats
 
 from api.models import BuildingRiskScore
+from api.utils import OUTAGE_RADIUS_M
 
 ANALYSIS_YEARS = 3
 HEAT_THRESHOLD_F = 90.0
-PROXIMITY_M = 804.67  # 0.5 miles
 MIN_COMPLAINTS_FOR_R = 8
-EARTH_RADIUS_MILES = 3958.8
 HEAT_TERCILE = 0.67
-
-
-# ---------------------------------------------------------------------------
-# Haversine distance
-# ---------------------------------------------------------------------------
-
-
-def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return EARTH_RADIUS_MILES * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # ---------------------------------------------------------------------------
@@ -183,13 +168,13 @@ class Command(BaseCommand):
         from api.models import DFTAProvider, DFTASeniorCenter
 
         if DFTAProvider.objects.exists():
-            bins_near_providers = _bins_near_table("dfta_providers", PROXIMITY_M)
+            bins_near_providers = _bins_near_table("dfta_providers", OUTAGE_RADIUS_M)
             self.stdout.write(f"  {len(bins_near_providers)} buildings near a DFTA provider.")
         else:
             self.stdout.write(self.style.WARNING("  No DFTA providers — run ingest_dfta first."))
 
         if DFTASeniorCenter.objects.exists():
-            bins_near_centers = _bins_near_table("dfta_senior_centers", PROXIMITY_M)
+            bins_near_centers = _bins_near_table("dfta_senior_centers", OUTAGE_RADIUS_M)
             self.stdout.write(f"  {len(bins_near_centers)} buildings near a senior center.")
         else:
             self.stdout.write(self.style.WARNING("  No senior centers — run ingest_dfta first."))
@@ -214,6 +199,10 @@ class Command(BaseCommand):
             weather_df["week_start"] = weather_df["date"].dt.to_period("W").dt.start_time
             weekly_weather = weather_df.groupby("week_start")["weekly_max_f"].max().reset_index()
             weekly_weather["is_heat_week"] = weekly_weather["weekly_max_f"] >= HEAT_THRESHOLD_F
+            # Restrict to the 3yr complaint window so out-of-window weeks don't bias Pearson r.
+            weekly_weather = weekly_weather[
+                weekly_weather["week_start"] >= pd.Timestamp(cutoff_3yr)
+            ].reset_index(drop=True)
             self.stdout.write(f"  {len(weekly_weather)} weeks of weather data.")
 
         # ── 7. Weekly complaints per BIN for heat correlation ─────────────
@@ -319,7 +308,7 @@ class Command(BaseCommand):
         # community_board is a 3-digit string; first digit encodes borough
         c = complaints.dropna(subset=["community_board"]).copy()
         c = c[c["community_board"] != ""]
-        c["is_summer"] = complaints["date_entered"].dt.month.isin([6, 7, 8])
+        c["is_summer"] = c["date_entered"].dt.month.isin([6, 7, 8])
         total = c.groupby("community_board").size()
         summer = c[c["is_summer"]].groupby("community_board").size()
         ratio = (summer / total).fillna(0)

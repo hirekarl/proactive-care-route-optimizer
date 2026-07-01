@@ -29,14 +29,9 @@ class Route(models.Model):
 class RouteStop(models.Model):
     route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name="stops")
     address = models.TextField()
-    borough = models.TextField(blank=True)
     lat = models.FloatField(null=True)
     lon = models.FloatField(null=True)
     order = models.PositiveIntegerField()
-    recipient_name = models.TextField(blank=True)
-    floor = models.IntegerField(null=True)
-    scheduled_time = models.TextField(blank=True)
-    provider_id = models.TextField(blank=True, db_index=True)
 
     class Meta:
         db_table = "route_stops"

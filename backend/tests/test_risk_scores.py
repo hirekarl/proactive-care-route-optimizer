@@ -2,11 +2,15 @@
 
 import datetime
 import json
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.db import connection
 from django.test import Client
+
+_TEST_API_KEY = "test-buildings-key"
+_AUTH = {"HTTP_AUTHORIZATION": f"Api-Key {_TEST_API_KEY}"}
 
 
 def _insert_complaint(
@@ -253,6 +257,15 @@ class TestComputeRiskScoresCommand:
         # With enough data, heat_ratio should be populated
         assert score.n_complaints_analyzed > 0
 
+    def test_empty_database_exits_early(self) -> None:
+        """compute_risk_scores with no complaint rows should warn and return cleanly."""
+        from django.core.management import call_command
+
+        from api.models import BuildingRiskScore
+
+        call_command("compute_risk_scores", verbosity=0)
+        assert BuildingRiskScore.objects.count() == 0
+
 
 @pytest.mark.django_db
 class TestBuildingAPI:
@@ -321,6 +334,46 @@ class TestBuildingAPI:
         client = Client()
         resp = client.get("/api/buildings/DOES-NOT-EXIST/")
         assert resp.status_code == 404
+
+    def test_list_filter_invalid_min_score_is_ignored(self) -> None:
+        """A non-integer min_score param is silently ignored — all buildings returned."""
+        client = Client()
+        self._seed_building("B-BADSCORE-001")
+        resp = client.get("/api/buildings/?min_score=notanint")
+        assert resp.status_code == 200
+        assert any(b["bin"] == "B-BADSCORE-001" for b in resp.json())
+
+    def test_list_filter_borough(self) -> None:
+        """?borough=1 returns only buildings whose community_board starts with '1'."""
+        from api.models import BuildingRiskScore
+
+        client = Client()
+        self._seed_building("B-BORO-MAN")  # default community_board = "101" (Manhattan)
+        BuildingRiskScore.objects.update_or_create(
+            bin="B-BORO-BX",
+            defaults={
+                "house_number": "100",
+                "house_street": "Grand Concourse",
+                "zip_code": "10451",
+                "community_board": "201",  # Bronx
+                "lat": 40.858,
+                "lon": -73.925,
+                "complaints_1yr": 1,
+                "complaints_3yr": 3,
+                "is_chronic": True,
+                "vulnerability_score": 2,
+                "score_provider": 1,
+                "score_center": 1,
+                "score_heat_cb": 0,
+                "n_complaints_analyzed": 3,
+                "confidence": "medium",
+            },
+        )
+        resp = client.get("/api/buildings/?borough=1")
+        assert resp.status_code == 200
+        bins = [b["bin"] for b in resp.json()]
+        assert "B-BORO-MAN" in bins
+        assert "B-BORO-BX" not in bins
 
 
 @pytest.mark.django_db
@@ -396,13 +449,20 @@ class TestIngestDFTA:
                 return r
 
             mock_get.side_effect = side_effect
-            call_command("ingest_dfta", verbosity=0)
+            call_command("ingest_dfta", skip_providers=True, verbosity=0)
 
         from api.models import DFTASeniorCenter
 
         assert DFTASeniorCenter.objects.filter(center_id="SC-INGEST-1").exists()
         sc = DFTASeniorCenter.objects.get(center_id="SC-INGEST-1")
         assert sc.lat == pytest.approx(40.758)
+
+    _SC_STUB = {
+        "facilityid": "SC-STUB",
+        "name": "Stub",
+        "latitude": "40.758",
+        "longitude": "-73.985",
+    }
 
     def _call_with_providers(
         self, provider_rows: list[dict[str, str]], dataset_id: str = "cwsm-2ns3"
@@ -411,7 +471,12 @@ class TestIngestDFTA:
 
         def side_effect(url: str, **kwargs: object) -> MagicMock:
             r = MagicMock()
-            r.json.return_value = provider_rows if dataset_id in url else []
+            if "ygfr-ij6t" in url:
+                r.json.return_value = [self._SC_STUB]
+            elif dataset_id in url:
+                r.json.return_value = provider_rows
+            else:
+                r.json.return_value = []
             return r
 
         with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
@@ -537,10 +602,122 @@ class TestIngestDFTA:
         assert DFTAProvider.objects.filter(provider_id="P-NEW").exists()
         assert not DFTAProvider.objects.filter(provider_id="P-OLD").exists()
 
+    def test_ingest_center_skips_row_with_no_id(self) -> None:
+        """Center row with no facilityid, bin, or objectid is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTASeniorCenter
+
+        bad_row = {"name": "No ID Center", "latitude": "40.758", "longitude": "-73.985"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = [bad_row] if "ygfr-ij6t" in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            call_command("ingest_dfta", skip_providers=True, verbosity=0)
+
+        assert DFTASeniorCenter.objects.count() == 0
+
+    def test_ingest_center_skips_row_when_geocoding_fails(self) -> None:
+        """Center row with no coordinates and a failing geocoder is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTASeniorCenter
+
+        bad_row = {"facilityid": "SC-NO-COORDS", "name": "No Coords Center"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            r.json.return_value = [bad_row] if "ygfr-ij6t" in url else []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            with patch("api.management.commands.ingest_dfta.geocode_address", return_value=None):
+                call_command("ingest_dfta", skip_providers=True, verbosity=0)
+
+        assert not DFTASeniorCenter.objects.filter(center_id="SC-NO-COORDS").exists()
+
+    def test_ingest_provider_skips_row_when_geocoding_fails(self) -> None:
+        """Provider row with no coordinates and a failing geocoder is silently skipped."""
+        from django.core.management import call_command
+
+        from api.models import DFTAProvider
+
+        bad_row = {"contractid": "P-NO-COORDS", "provider_name": "No Coords Provider"}
+
+        def side_effect(url: str, **kwargs: object) -> MagicMock:
+            r = MagicMock()
+            if "ygfr-ij6t" in url:
+                r.json.return_value = [self._SC_STUB]
+            elif "test-ds" in url:
+                r.json.return_value = [bad_row]
+            else:
+                r.json.return_value = []
+            return r
+
+        with patch("api.management.commands.ingest_dfta.httpx.get") as mock_get:
+            mock_get.side_effect = side_effect
+            with patch("api.management.commands.ingest_dfta.geocode_address", return_value=None):
+                call_command("ingest_dfta", provider_dataset="test-ds", verbosity=0)
+
+        assert not DFTAProvider.objects.filter(provider_id="P-NO-COORDS").exists()
+
+    def test_ingest_providers_cqc8_am9x_field_names(self) -> None:
+        """cqc8-am9x rows use dfta_id, sponsorname, programaddress — all three stored correctly."""
+        from api.models import DFTAProvider
+
+        self._call_with_providers(
+            [
+                {
+                    "dfta_id": "P-CQC-001",
+                    "sponsorname": "Bronx Senior Services",
+                    "programaddress": "1234 Grand Concourse",
+                    "latitude": "40.858",
+                    "longitude": "-73.925",
+                }
+            ],
+            dataset_id="cqc8-am9x",
+        )
+
+        assert DFTAProvider.objects.filter(provider_id="P-CQC-001").exists()
+        p = DFTAProvider.objects.get(provider_id="P-CQC-001")
+        assert p.name == "Bronx Senior Services"
+        assert p.address == "1234 Grand Concourse"
+        assert p.lat == pytest.approx(40.858)
+
+    def test_coords_from_row_falls_back_to_geocoding_on_bad_float(self) -> None:
+        """_coords_from_row with non-parseable lat/lon strings geocodes the address instead."""
+        from api.management.commands.ingest_dfta import Command
+
+        with patch(
+            "api.management.commands.ingest_dfta.geocode_address",
+            return_value=(-73.985, 40.758),
+        ) as mock_geo:
+            result = Command()._coords_from_row(
+                {
+                    "latitude": "bad",
+                    "longitude": "worse",
+                    "address": "123 Main St",
+                    "borough": "Bronx",
+                },
+                {},
+            )
+
+        assert result == (-73.985, 40.758)
+        mock_geo.assert_called_once()
+
 
 @pytest.mark.django_db
 class TestBuildingOverride:
     """Tests for PATCH /api/buildings/<bin>/ elevator_count_override."""
+
+    @pytest.fixture(autouse=True)
+    def _set_api_key(self, settings: Any) -> None:
+        settings.ROUTE_API_KEY = _TEST_API_KEY
 
     def _seed_building(
         self,
@@ -595,6 +772,16 @@ class TestBuildingOverride:
 
     # ── endpoint surface ────────────────────────────────────────────────────
 
+    def test_patch_requires_api_key(self) -> None:
+        client = Client()
+        self._seed_building("B-OVR-AUTH")
+        resp = client.patch(
+            "/api/buildings/B-OVR-AUTH/",
+            data=json.dumps({"elevatorCountOverride": 1}),
+            content_type="application/json",
+        )
+        assert resp.status_code == 403
+
     def test_patch_sets_single_elevator_override(self) -> None:
         client = Client()
         self._seed_building("B-OVR-001")
@@ -602,6 +789,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-001/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] == 1
@@ -613,6 +801,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-002/",
             data=json.dumps({"elevatorCountOverride": 4}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] == 4
@@ -624,6 +813,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-003/",
             data=json.dumps({"elevatorCountOverride": None}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 200
         assert resp.json()["elevatorCountOverride"] is None
@@ -635,6 +825,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-004/",
             data=json.dumps({"elevatorCountOverride": 0}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 400
 
@@ -645,6 +836,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-005/",
             data=json.dumps({"elevatorCountOverride": -1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 400
 
@@ -654,6 +846,7 @@ class TestBuildingOverride:
             "/api/buildings/DOES-NOT-EXIST/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
         assert resp.status_code == 404
 
@@ -674,6 +867,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-006/",
             data=json.dumps({"elevatorCountOverride": 1}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")
@@ -690,6 +884,7 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-007/",
             data=json.dumps({"elevatorCountOverride": 3}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")
@@ -711,8 +906,132 @@ class TestBuildingOverride:
             "/api/buildings/B-OVR-008/",
             data=json.dumps({"elevatorCountOverride": None}),
             content_type="application/json",
+            **_AUTH,
         )
 
         resp = client.get("/api/outages/")
         item = next(o for o in resp.json() if o["bin"] == "B-OVR-008")
         assert item["singleElevator"] is True  # DOB value restored
+
+
+class TestScoreBuildingHeat:
+    """Unit tests for _score_building_heat; no database required."""
+
+    def _weeks(self, data: list[tuple[str, float, bool]]) -> Any:
+        import pandas as pd
+
+        dates, temps, is_heat = zip(*data, strict=True)
+        return pd.DataFrame(
+            {
+                "week_start": pd.to_datetime(list(dates)),
+                "weekly_max_f": list(temps),
+                "is_heat_week": list(is_heat),
+            }
+        )
+
+    def _building(self, bin_id: str, data: list[tuple[str, float]]) -> Any:
+        import pandas as pd
+
+        dates, counts = zip(*data, strict=True)
+        return pd.DataFrame(
+            {
+                "bin": [bin_id] * len(dates),
+                "week_start": pd.to_datetime(list(dates)),
+                "n_complaints": list(counts),
+            }
+        )
+
+    def test_high_confidence(self) -> None:
+        """n_complaints_3yr >= 15 → confidence 'high'."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        weeks = self._weeks([("2024-01-01", 85.0, False), ("2024-01-08", 85.0, False)])
+        building_c = self._building("BIN-H", [("2024-01-01", 8.0), ("2024-01-08", 7.0)])
+        result = _score_building_heat("BIN-H", building_c, weeks, n_complaints_3yr=15)
+        assert result["confidence"] == "high"
+
+    def test_low_confidence(self) -> None:
+        """n_complaints_3yr < 5 → confidence 'low'."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        weeks = self._weeks([("2024-01-01", 85.0, False)])
+        building_c = self._building("BIN-L", [("2024-01-01", 1.0)])
+        result = _score_building_heat("BIN-L", building_c, weeks, n_complaints_3yr=3)
+        assert result["confidence"] == "low"
+
+    def test_heat_ratio_none_when_no_nonheat_complaints(self) -> None:
+        """heat_rate > 0, nonheat_rate == 0 → heat_ratio is None."""
+        from api.management.commands.compute_risk_scores import _score_building_heat
+
+        # Only a heat week; non-heat week exists but has zero complaints → nonheat_rate = 0
+        weeks = self._weeks([("2024-07-01", 95.0, True), ("2024-01-01", 50.0, False)])
+        building_c = self._building("BIN-R", [("2024-07-01", 1.0)])
+        result = _score_building_heat("BIN-R", building_c, weeks, n_complaints_3yr=3)
+        assert result["heat_ratio"] is None
+
+
+class TestHeatFlagCbs:
+    """Unit tests for Command._heat_flag_cbs; no database required."""
+
+    def test_summer_ratio_determines_top_tercile(self) -> None:
+        """CBs with higher summer complaint ratio land in the top tercile."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+        winter = today.replace(month=1, day=1)
+
+        # CB "101": 2 summer, 1 winter → ratio 0.667
+        # CB "201": 0 summer, 2 winter → ratio 0.0
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", "101", "101", "201", "201"],
+                "date_entered": pd.to_datetime([summer, summer, winter, winter, winter]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        assert "101" in result
+        assert "201" not in result
+
+    def test_empty_community_board_excluded(self) -> None:
+        """Rows with empty community_board are dropped before ratio computation."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", ""],
+                "date_entered": pd.to_datetime([summer, summer]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        assert "" not in result
+
+    def test_uses_subset_index_correctly(self) -> None:
+        """is_summer is derived from c (filtered subset), not complaints (full DataFrame)."""
+        import pandas as pd
+
+        from api.management.commands.compute_risk_scores import Command
+
+        today = datetime.date.today()
+        summer = today.replace(month=7, day=1)
+        winter = today.replace(month=1, day=1)
+
+        # Row at index 1 is filtered out (empty CB). Row at index 0 is summer,
+        # row at index 2 is winter. With the fixed code c["date_entered"] gives
+        # is_summer for only the retained rows (0=True, 2=False).
+        complaints = pd.DataFrame(
+            {
+                "community_board": ["101", "", "101"],
+                "date_entered": pd.to_datetime([summer, summer, winter]),
+            }
+        )
+        result = Command()._heat_flag_cbs(complaints)
+        # CB "101" has ratio = 1/2 = 0.5; only one CB so it's at/above the tercile threshold.
+        assert "101" in result

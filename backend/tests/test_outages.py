@@ -1,18 +1,8 @@
 import pytest
-from django.db import connection
 from django.test import Client
 
 from tests.factories import ElevatorComplaintFactory
-
-
-def _set_location(complaint_number: str, lon: float, lat: float) -> None:
-    """Populate the PostGIS location column (not managed by the ORM)."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE elevator_complaints SET location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)"
-            " WHERE complaint_number = %s",
-            [lon, lat, complaint_number],
-        )
+from tests.helpers import _set_location
 
 
 @pytest.mark.django_db
@@ -87,3 +77,10 @@ def test_outages_proximity_excludes_closed(client: Client) -> None:
 def test_outages_only_one_param_returns_400(client: Client) -> None:
     response = client.get("/api/outages/?lat=40.7580")
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_outages_invalid_lat_lon_returns_400(client: Client) -> None:
+    response = client.get("/api/outages/?lat=notanumber&lon=0")
+    assert response.status_code == 400
+    assert "must be valid floats" in response.json()["detail"]

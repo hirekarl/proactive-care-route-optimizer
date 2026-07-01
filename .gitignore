@@ -27,3 +27,4 @@ frontend/dist/
 
 # macOS
 .DS_Store
+/uv.lock

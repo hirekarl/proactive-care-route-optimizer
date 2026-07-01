@@ -53,6 +53,7 @@ def test_ingest_creates_complaint(monkeypatch: pytest.MonkeyPatch) -> None:
     complaint = ElevatorComplaint.objects.get(complaint_number="9999001")
     assert complaint.status == "ACTIVE"
     assert complaint.bin == "1085680"
+    assert complaint.community_board == "111"
     assert complaint.date_entered == datetime.date(2026, 6, 15)
     assert abs(complaint.lat - 40.7960) < 0.001
     assert abs(complaint.lon - (-73.9497)) < 0.001
@@ -140,6 +141,48 @@ def test_ingest_geocoding_fallback_success(monkeypatch: pytest.MonkeyPatch) -> N
     c = ElevatorComplaint.objects.get(complaint_number="9999002")
     assert abs(c.lat - 40.7960) < 0.001
     assert abs(c.lon - (-73.9497)) < 0.001
+
+
+@pytest.mark.django_db
+def test_geocoding_failure_does_not_mark_complaint_stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A complaint still active in the API is not marked CLOSED just because geocoding failed."""
+    ElevatorComplaint.objects.create(
+        complaint_number="9999004",
+        bin="1085680",
+        status="ACTIVE",
+        lat=40.7128,
+        lon=-74.006,
+    )
+
+    complaint = {
+        "complaint_number": "9999004",
+        "bin": "1085680",
+        "house_number": "",
+        "house_street": "",
+        "zip_code": "",
+        "date_entered": "06/15/2026",
+        "community_board": "111",
+    }
+
+    call_count = 0
+
+    def mock_get(url: str, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        if "kqwi-7ncn" in url:
+            return _make_mock_response([complaint] if call_count == 1 else [])
+        return _make_mock_response([])  # device registry returns nothing
+
+    with patch("api.management.commands.ingest_outages.httpx.get", side_effect=mock_get):
+        with patch("api.management.commands.ingest_outages.Command._get_token", return_value=""):
+            with patch(
+                "api.management.commands.ingest_outages.geocode_address",
+                return_value=None,
+            ):
+                call_command("ingest_outages")
+
+    complaint_obj = ElevatorComplaint.objects.get(complaint_number="9999004")
+    assert complaint_obj.status == "ACTIVE"
 
 
 @pytest.mark.django_db
@@ -241,19 +284,22 @@ class TestIngestForecast:
         assert WeatherForecast.objects.count() == 2
         assert not WeatherForecast.objects.filter(date="2026-06-01").exists()
 
-    def test_null_temp_stored_as_zero(self) -> None:
-        """A null temperature in the API response is stored as 0.0."""
+    def test_null_temp_excluded(self) -> None:
+        """A null temperature in the API response is excluded, not stored as 0.0."""
         from django.core.management import call_command
 
+        dates = ["2026-06-27", "2026-06-28", "2026-06-29"]
+        temps: list[float | None] = [94.0, None, 88.5]
         with patch(
             "api.management.commands.ingest_forecast.httpx.get",
-            return_value=self._mock_response(["2026-06-27"], [None]),
+            return_value=self._mock_response(dates, temps),
         ):
             call_command("ingest_forecast", verbosity=0)
 
         from api.models import WeatherForecast
 
-        assert WeatherForecast.objects.get(date="2026-06-27").temp_max_f == 0.0
+        assert WeatherForecast.objects.count() == 2
+        assert not WeatherForecast.objects.filter(date="2026-06-28").exists()
 
     def test_uses_correct_open_meteo_params(self) -> None:
         """timezone and temperature_unit are sent as required params."""
@@ -268,6 +314,33 @@ class TestIngestForecast:
         assert params["timezone"] == "America/New_York"
         assert params["temperature_unit"] == "fahrenheit"
         assert params["forecast_days"] == 7
+
+
+@pytest.mark.django_db
+class TestIngestWeather:
+    """Tests for the ingest_weather management command."""
+
+    def _mock_response(self, dates: list[str], temps: list[float | None]) -> MagicMock:
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = {"daily": {"time": dates, "temperature_2m_max": temps}}
+        return m
+
+    def test_null_temp_excluded(self) -> None:
+        """A null temperature in the API response is excluded, not stored as 0.0."""
+        from api.models import WeatherDay
+
+        dates = ["2026-06-27", "2026-06-28", "2026-06-29"]
+        temps: list[float | None] = [94.0, None, 88.5]
+        with patch(
+            "api.management.commands.ingest_weather.httpx.get",
+            return_value=self._mock_response(dates, temps),
+        ):
+            call_command("ingest_weather", verbosity=0)
+
+        assert WeatherDay.objects.count() == 2
+        assert not WeatherDay.objects.filter(date="2026-06-28").exists()
+        assert WeatherDay.objects.get(date="2026-06-27").temp_max_f == 94.0
 
 
 class TestGeocode:

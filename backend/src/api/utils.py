@@ -1,0 +1,5 @@
+OUTAGE_RADIUS_M = 804.67  # 0.5 miles
+
+
+def _chunks(items: list[str], size: int) -> list[list[str]]:
+    return [items[i : i + size] for i in range(0, len(items), size)]

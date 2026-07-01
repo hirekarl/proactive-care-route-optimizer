@@ -1,32 +1,34 @@
 import datetime
+import logging
 from typing import Any
 
-from django.db import connection
+from django.conf import settings
+from django.db import DatabaseError, connection
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework.exceptions import ParseError
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.alerts import classify_severity, get_is_heat_week, suggest_action
 from api.geocoding import geocode_address
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
-from api.route_alerts import (
-    build_at_risk_entries,
-    count_at_risk_by_borough,
-    get_stops_for_date,
-    providers_affected,
-)
+from api.permissions import HasRouteApiKey
 from api.serializers import (
+    AtRiskStopSerializer,
     BuildingRiskScoreSerializer,
     BuildingUpdateSerializer,
     EnrichedOutageSerializer,
-    FrontendRouteStopSerializer,
     ProviderSerializer,
     RouteCreateSerializer,
     RouteSerializer,
+    RouteStopFlatSerializer,
 )
+from api.utils import OUTAGE_RADIUS_M as ALERT_RADIUS_M
 
-ALERT_RADIUS_M = 804.67  # 0.5 miles in metres
+logger = logging.getLogger(__name__)
 
 BOROUGH_BY_CODE = {
     "1": "Manhattan",
@@ -38,7 +40,14 @@ BOROUGH_BY_CODE = {
 
 _HEAT_RISK_MULTIPLIER_FALLBACK = 1.20  # EDA baseline; used when no scored buildings exist yet
 
-ALL_OUTAGES_SQL = """
+# DashboardSummaryView's inline SQL omits the brs alias and is kept separately.
+_EFFECTIVE_SINGLE_ELEVATOR_SQL = (
+    "CASE WHEN brs.elevator_count_override IS NOT NULL"
+    " THEN (brs.elevator_count_override = 1)"
+    " ELSE brs.is_single_elevator END"
+)
+
+ALL_OUTAGES_SQL = f"""
     SELECT
         ec.complaint_number,
         ec.bin,
@@ -51,20 +60,14 @@ ALL_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(
-            CASE
-                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
-                ELSE brs.is_single_elevator
-            END,
-            false
-        ) AS single_elevator
+        COALESCE({_EFFECTIVE_SINGLE_ELEVATOR_SQL}, false) AS single_elevator
     FROM elevator_complaints ec
     LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
     WHERE ec.status = 'ACTIVE' AND ec.location IS NOT NULL
     ORDER BY ec.date_entered DESC
 """
 
-NEARBY_OUTAGES_SQL = """
+NEARBY_OUTAGES_SQL = f"""
     SELECT
         ec.complaint_number,
         ec.bin,
@@ -77,13 +80,7 @@ NEARBY_OUTAGES_SQL = """
         ec.lat,
         ec.lon,
         COALESCE(brs.is_chronic, false) AS chronic_offender,
-        COALESCE(
-            CASE
-                WHEN brs.elevator_count_override IS NOT NULL THEN (brs.elevator_count_override = 1)
-                ELSE brs.is_single_elevator
-            END,
-            false
-        ) AS single_elevator,
+        COALESCE({_EFFECTIVE_SINGLE_ELEVATOR_SQL}, false) AS single_elevator,
         ST_Distance(
             ec.location::geography,
             ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
@@ -100,28 +97,42 @@ NEARBY_OUTAGES_SQL = """
     ORDER BY distance_m ASC
 """
 
-# Used internally by RouteDetailView — compact shape for embedded stop alerts.
-PROXIMITY_SQL = """
+# Each (stop_id, complaint_number) pair is unique — a complaint's location is fixed.
+BATCH_PROXIMITY_SQL = f"""
+    WITH stop_points AS (
+        SELECT
+            UNNEST(%s::bigint[]) AS stop_id,
+            UNNEST(%s::float8[]) AS slon,
+            UNNEST(%s::float8[]) AS slat
+    )
     SELECT
-        complaint_number,
-        bin,
-        house_number,
-        house_street,
-        zip_code,
-        date_entered,
+        sp.stop_id,
+        ec.complaint_number,
+        ec.bin,
+        ec.house_number,
+        ec.house_street,
+        ec.zip_code,
+        ec.date_entered,
         ST_Distance(
-            location::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
-        ) AS distance_m
-    FROM elevator_complaints
-    WHERE status = 'ACTIVE'
-      AND location IS NOT NULL
-      AND ST_DWithin(
-            location::geography,
-            ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography
+        ) AS distance_m,
+        COALESCE(brs.is_chronic, false) AS is_chronic,
+        {_EFFECTIVE_SINGLE_ELEVATOR_SQL} AS is_single_elevator,
+        brs.heat_ratio,
+        brs.confidence
+    FROM stop_points sp
+    JOIN elevator_complaints ec ON (
+        ec.status = 'ACTIVE'
+        AND ec.location IS NOT NULL
+        AND ST_DWithin(
+            ec.location::geography,
+            ST_SetSRID(ST_MakePoint(sp.slon, sp.slat), 4326)::geography,
             %s
-          )
-    ORDER BY distance_m ASC
+        )
+    )
+    LEFT JOIN building_risk_scores brs ON ec.bin = brs.bin
+    ORDER BY sp.stop_id, distance_m ASC
 """
 
 
@@ -153,9 +164,56 @@ def _run_query(sql: str, params: list[Any] | None = None) -> list[dict[str, Any]
         return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
 
 
-def _nearby_outages(lat: float, lon: float) -> list[dict[str, Any]]:
-    """Compact proximity results for embedding in route-stop alert lists."""
-    return _run_query(PROXIMITY_SQL, [lon, lat, lon, lat, ALERT_RADIUS_M])
+def _batch_nearby_outages(stops: list[RouteStop]) -> dict[int, list[dict[str, Any]]]:
+    """Single-query proximity lookup for all geocoded stops; returns alerts grouped by stop pk."""
+    stop_ids: list[int] = []
+    lons: list[float] = []
+    lats: list[float] = []
+    for s in stops:
+        if s.lat is not None and s.lon is not None:
+            stop_ids.append(s.pk)
+            lons.append(s.lon)
+            lats.append(s.lat)
+    if not stop_ids:
+        return {}
+    rows = _run_query(BATCH_PROXIMITY_SQL, [stop_ids, lons, lats, ALERT_RADIUS_M])
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        stop_id: int = row.pop("stop_id")
+        result.setdefault(stop_id, []).append(row)
+    return result
+
+
+def _enrich_alerts_in_place(
+    alerts_by_stop_id: dict[int, list[dict[str, Any]]], is_heat_week: bool
+) -> None:
+    """Mutates each alert dict to add severity and suggested_action."""
+    for raw_alerts in alerts_by_stop_id.values():
+        for alert in raw_alerts:
+            severity = classify_severity(
+                distance_m=float(alert["distance_m"]),
+                is_chronic=bool(alert.get("is_chronic", False)),
+                is_single_elevator=alert.get("is_single_elevator"),
+                is_heat_week=is_heat_week,
+                heat_ratio=alert.get("heat_ratio"),
+                confidence=str(alert.get("confidence") or "low"),
+            )
+            alert["severity"] = severity
+            alert["suggested_action"] = suggest_action(
+                severity=severity,
+                is_single_elevator=alert.get("is_single_elevator"),
+                is_heat_week=is_heat_week,
+            )
+
+
+def _parse_date_param(request: Request) -> datetime.date:
+    date_str = request.query_params.get("date")
+    if date_str:
+        try:
+            return datetime.date.fromisoformat(date_str)
+        except ValueError:
+            raise ParseError("date must be ISO format (YYYY-MM-DD).") from None
+    return timezone.localdate()
 
 
 class HealthCheckView(APIView):
@@ -200,7 +258,13 @@ class DashboardSummaryView(APIView):
             cursor.execute("SELECT COUNT(*) FROM building_risk_scores WHERE is_chronic = true")
             chronic_offenders: int = cursor.fetchone()[0]
             cursor.execute(
-                "SELECT COUNT(*) FROM building_risk_scores WHERE is_single_elevator = true"
+                """
+                SELECT COUNT(*) FROM building_risk_scores
+                WHERE CASE WHEN elevator_count_override IS NOT NULL
+                           THEN (elevator_count_override = 1)
+                           ELSE is_single_elevator
+                      END = true
+                """
             )
             single_elevator_buildings: int = cursor.fetchone()[0]
             cursor.execute("SELECT MAX(fetched_at) FROM elevator_complaints")
@@ -260,22 +324,16 @@ class DashboardSummaryView(APIView):
             {
                 "borough": BOROUGH_BY_CODE.get(str(code), str(code)),
                 "active_outages": int(active),
-                "at_risk_stops": 0,
+                "at_risk_stops": 0,  # needs borough column on RouteStop — see Gap 5 in docs/
                 "chronic_offenders": int(chronic),
             }
             for code, active, chronic in borough_rows
             if str(code) in BOROUGH_BY_CODE
         ]
 
-        route_date = datetime.date.today()
-        at_risk_entries = build_at_risk_entries(route_date, alert_radius_m=ALERT_RADIUS_M)
-        at_risk_by_borough = count_at_risk_by_borough(at_risk_entries)
-        for borough_row in borough_breakdown:
-            borough_row["at_risk_stops"] = at_risk_by_borough.get(borough_row["borough"], 0)
-
         outages_trend = [
             {
-                "date": (d.strftime("%-d %b") if isinstance(d, datetime.date) else str(d)),
+                "date": (f"{d.day} {d.strftime('%b')}" if isinstance(d, datetime.date) else str(d)),
                 "outages": int(count),
             }
             for d, count in trend_rows
@@ -299,11 +357,24 @@ class DashboardSummaryView(APIView):
             "forecast": forecast_days,
         }
 
+        try:
+            today_stops = list(RouteStop.objects.filter(route__date=timezone.localdate()))
+            # cost scales with stops × nearby active complaints (GiST-indexed)
+            at_risk_stops = len(_batch_nearby_outages(today_stops))
+            at_risk_stops_error = False
+        except DatabaseError:
+            logger.exception("at_risk_stops proximity scan failed")
+            if settings.DEBUG:
+                raise
+            at_risk_stops = 0
+            at_risk_stops_error = True
+
         return Response(
             {
                 "active_outages": active_outages,
-                "at_risk_stops": len(at_risk_entries),
-                "providers_affected": len(providers_affected(at_risk_entries)),
+                "at_risk_stops": at_risk_stops,
+                "at_risk_stops_error": at_risk_stops_error,
+                "providers_affected": 0,  # stub — no provider–stop link in current data
                 "chronic_offenders": chronic_offenders,
                 "single_elevator_buildings": single_elevator_buildings,
                 "heat_risk_multiplier": heat_risk_multiplier,
@@ -323,6 +394,8 @@ class ProvidersView(ListAPIView[DFTAProvider]):
 
 
 class RouteCreateView(APIView):
+    permission_classes = [HasRouteApiKey]
+
     def post(self, request: Request) -> Response:
         serializer = RouteCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -332,25 +405,11 @@ class RouteCreateView(APIView):
         route = Route.objects.create(name=data["name"], date=data["date"])
 
         stops: list[RouteStop] = []
-        for order, stop_data in enumerate(data["stops"]):
-            address = stop_data["address"]
+        for order, address in enumerate(data["stops"]):
             lonlat = geocode_address(address)
             lat = lonlat[1] if lonlat else None
             lon = lonlat[0] if lonlat else None
-            stops.append(
-                RouteStop(
-                    route=route,
-                    address=address,
-                    borough=stop_data.get("borough", ""),
-                    lat=lat,
-                    lon=lon,
-                    order=order,
-                    recipient_name=stop_data.get("recipient_name", ""),
-                    floor=stop_data.get("floor"),
-                    scheduled_time=stop_data.get("scheduled_time", ""),
-                    provider_id=stop_data.get("provider_id", ""),
-                )
-            )
+            stops.append(RouteStop(route=route, address=address, lat=lat, lon=lon, order=order))
         RouteStop.objects.bulk_create(stops)
 
         route_out = Route.objects.prefetch_related("stops").get(pk=route.pk)
@@ -358,52 +417,82 @@ class RouteCreateView(APIView):
 
 
 class RouteDetailView(RetrieveAPIView[Route]):
+    permission_classes = [HasRouteApiKey]
     queryset = Route.objects.prefetch_related("stops")
     serializer_class = RouteSerializer
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         route = self.get_object()
         stops = list(route.stops.all())
-        alerts_by_stop_id: dict[int, list[dict[str, Any]]] = {}
-        for stop in stops:
-            if stop.lat is not None and stop.lon is not None:
-                alerts_by_stop_id[stop.pk] = _nearby_outages(stop.lat, stop.lon)
+        is_heat_week = get_is_heat_week()
+        alerts_by_stop_id = _batch_nearby_outages(stops)
+        _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
         context = {**self.get_serializer_context(), "alerts_by_stop_id": alerts_by_stop_id}
         return Response(RouteSerializer(route, context=context).data)
 
 
-class RouteStopsListView(APIView):
-    """GET /api/routes/stops/ — all stops for a route date (defaults to today)."""
+class RouteStopsView(APIView):
+    """GET /api/routes/stops/ — all stops for a given date's routes."""
+
+    permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_str = request.query_params.get("date")
-        if date_str is None:
-            route_date = datetime.date.today()
-        else:
-            try:
-                route_date = datetime.date.fromisoformat(date_str)
-            except ValueError:
-                return Response({"detail": "date must be ISO 8601 (YYYY-MM-DD)."}, status=400)
+        target_date = _parse_date_param(request)
 
-        stops = get_stops_for_date(route_date)
-        return Response(FrontendRouteStopSerializer(stops, many=True).data)
+        stops = (
+            RouteStop.objects.select_related("route")
+            .filter(route__date=target_date)
+            .order_by("route__id", "order")
+        )
+        return Response(RouteStopFlatSerializer(stops, many=True).data)
 
 
-class AtRiskStopsView(APIView):
-    """GET /api/alerts/at-risk/ — route stops screened against active outages."""
+_SEVERITY_ORDER: dict[str, int] = {"critical": 0, "warning": 1, "watch": 2}
+
+
+class AlertsAtRiskView(APIView):
+    """GET /api/alerts/at-risk/ — stops with ≥1 active proximity alert."""
+
+    permission_classes = [HasRouteApiKey]
 
     def get(self, request: Request) -> Response:
-        date_str = request.query_params.get("date")
-        if date_str is None:
-            route_date = datetime.date.today()
-        else:
-            try:
-                route_date = datetime.date.fromisoformat(date_str)
-            except ValueError:
-                return Response({"detail": "date must be ISO 8601 (YYYY-MM-DD)."}, status=400)
+        target_date = _parse_date_param(request)
 
-        entries = build_at_risk_entries(route_date, alert_radius_m=ALERT_RADIUS_M)
-        return Response(entries)
+        stops = list(
+            RouteStop.objects.select_related("route")
+            .filter(route__date=target_date)
+            .order_by("route__id", "order")
+        )
+        is_heat_week = get_is_heat_week()
+        try:
+            alerts_by_stop_id = _batch_nearby_outages(stops)
+        except DatabaseError:
+            logger.exception("at-risk proximity scan failed")
+            return Response({"detail": "Proximity scan unavailable."}, status=503)
+        _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
+
+        results = []
+        for stop in stops:
+            alerts = alerts_by_stop_id.get(stop.pk)
+            if not alerts:
+                continue
+            highest = min(alerts, key=lambda a: _SEVERITY_ORDER.get(a["severity"], 3))["severity"]
+            results.append(
+                {
+                    "id": stop.pk,
+                    "route_id": stop.route_id,
+                    "route_name": stop.route.name,
+                    "route_date": stop.route.date,
+                    "address": stop.address,
+                    "lat": stop.lat,
+                    "lon": stop.lon,
+                    "order": stop.order,
+                    "outage_alerts": alerts,
+                    "highest_severity": highest,
+                }
+            )
+
+        return Response(AtRiskStopSerializer(results, many=True).data)
 
 
 class BuildingListView(ListAPIView[BuildingRiskScore]):
@@ -438,6 +527,11 @@ class BuildingDetailView(APIView):
     GET  /api/buildings/<bin>/ — full risk score record
     PATCH /api/buildings/<bin>/ — set/clear elevator_count_override
     """
+
+    def get_permissions(self) -> list[Any]:
+        if self.request.method == "PATCH":
+            return [HasRouteApiKey()]
+        return []
 
     def get(self, request: Request, bin: str) -> Response:
         building = get_object_or_404(BuildingRiskScore, bin=bin)

@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 
 from api.models import BuildingRiskScore, DFTAProvider, Route, RouteStop
 
+
 class OutageAlertSerializer(serializers.Serializer):  # type: ignore[type-arg]
     """Compact outage shape embedded inside route-stop alert lists."""
 
@@ -17,6 +18,8 @@ class OutageAlertSerializer(serializers.Serializer):  # type: ignore[type-arg]
     date_entered = serializers.DateField(allow_null=True, required=False)
     distance_m = serializers.FloatField()
     outage_alert = serializers.SerializerMethodField()
+    severity = serializers.CharField()
+    suggested_action = serializers.CharField()
 
     def get_outage_alert(self, obj: dict[str, Any]) -> bool:
         return True
@@ -45,81 +48,12 @@ class RouteStopSerializer(serializers.ModelSerializer):  # type: ignore[type-arg
 
     class Meta:
         model = RouteStop
-        fields = [
-            "id",
-            "address",
-            "borough",
-            "lat",
-            "lon",
-            "order",
-            "recipient_name",
-            "floor",
-            "scheduled_time",
-            "provider_id",
-            "outage_alerts",
-        ]
+        fields = ["id", "address", "lat", "lon", "order", "outage_alerts"]
 
     def get_outage_alerts(self, obj: RouteStop) -> list[dict[str, Any]]:
         alerts_by_id: dict[int, list[dict[str, Any]]] = self.context.get("alerts_by_stop_id", {})
         alerts = alerts_by_id.get(obj.pk, [])
         return OutageAlertSerializer(alerts, many=True).data  # type: ignore[return-value]
-
-
-class FrontendRouteStopSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
-    """Route stop shape for GET /api/routes/stops/ — matches Mitra's RouteStop type."""
-
-    id = serializers.CharField(source="pk")
-    route_id = serializers.CharField(source="route.pk")
-    sequence = serializers.IntegerField(source="order")
-    lng = serializers.FloatField(source="lon")
-
-    class Meta:
-        model = RouteStop
-        fields = [
-            "id",
-            "route_id",
-            "sequence",
-            "recipient_name",
-            "address",
-            "borough",
-            "lat",
-            "lng",
-            "floor",
-            "scheduled_time",
-            "provider_id",
-        ]
-
-
-class RouteStopInputSerializer(serializers.Serializer):  # type: ignore[type-arg]
-    address = serializers.CharField()
-    borough = serializers.CharField(required=False, allow_blank=True, default="")
-    recipient_name = serializers.CharField(required=False, allow_blank=True, default="")
-    floor = serializers.IntegerField(required=False, allow_null=True, default=None)
-    scheduled_time = serializers.CharField(required=False, allow_blank=True, default="")
-    provider_id = serializers.CharField(required=False, allow_blank=True, default="")
-
-
-class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
-    name = serializers.CharField()
-    date = serializers.DateField()
-    stops = serializers.ListField(min_length=1)
-
-    def validate_date(self, value: datetime.date) -> datetime.date:
-        return value
-
-    def validate_stops(self, value: list[Any]) -> list[dict[str, Any]]:
-        normalized: list[dict[str, Any]] = []
-        for item in value:
-            if isinstance(item, str):
-                normalized.append({"address": item})
-                continue
-            if isinstance(item, dict):
-                stop_serializer = RouteStopInputSerializer(data=item)
-                stop_serializer.is_valid(raise_exception=True)
-                normalized.append(dict(stop_serializer.validated_data))
-                continue
-            raise ValidationError("Each stop must be an address string or a stop object.")
-        return normalized
 
 
 class RouteSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
@@ -128,6 +62,42 @@ class RouteSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
     class Meta:
         model = Route
         fields = ["id", "name", "date", "stops"]
+
+
+class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
+    name = serializers.CharField()
+    date = serializers.DateField()
+    stops = serializers.ListField(child=serializers.CharField(), min_length=1)
+
+    def validate_date(self, value: datetime.date) -> datetime.date:
+        return value
+
+
+class RouteStopFlatSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
+    """Flat stop shape for GET /api/routes/stops/ — includes parent route fields."""
+
+    route_id = serializers.IntegerField(source="route.id")
+    route_name = serializers.CharField(source="route.name")
+    route_date = serializers.DateField(source="route.date")
+
+    class Meta:
+        model = RouteStop
+        fields = ["id", "route_id", "route_name", "route_date", "address", "lat", "lon", "order"]
+
+
+class AtRiskStopSerializer(serializers.Serializer):  # type: ignore[type-arg]
+    """Stop with proximity-matched outage alerts for GET /api/alerts/at-risk/."""
+
+    id = serializers.IntegerField()
+    route_id = serializers.IntegerField()
+    route_name = serializers.CharField()
+    route_date = serializers.DateField()
+    address = serializers.CharField()
+    lat = serializers.FloatField(allow_null=True)
+    lon = serializers.FloatField(allow_null=True)
+    order = serializers.IntegerField()
+    outage_alerts = OutageAlertSerializer(many=True)
+    highest_severity = serializers.CharField()
 
 
 class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
@@ -176,12 +146,7 @@ class ProviderSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
 
     id = serializers.CharField(source="provider_id")
     lng = serializers.FloatField(source="lon")
-    # seniorsServed not available in the DFTA dataset — see docs/deferred-frontend-api-gaps.md
-    seniors_served = serializers.SerializerMethodField()
 
     class Meta:
         model = DFTAProvider
-        fields = ["id", "name", "borough", "address", "lat", "lng", "seniors_served"]
-
-    def get_seniors_served(self, obj: DFTAProvider) -> int:
-        return 0
+        fields = ["id", "name", "borough", "address", "lat", "lng"]

@@ -34,6 +34,7 @@ def _parse_db_url(url: str) -> dict[str, object]:
 SECRET_KEY: str = config("DJANGO_SECRET_KEY")
 DEBUG: bool = config("DJANGO_DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS: list[str] = config("ALLOWED_HOSTS", default="localhost", cast=Csv())
+ROUTE_API_KEY: str = config("ROUTE_API_KEY", default="")
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",

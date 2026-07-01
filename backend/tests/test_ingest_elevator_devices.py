@@ -60,6 +60,29 @@ def _mock_http(
     return MagicMock(side_effect=side_effect)
 
 
+def test_fetch_paginates_until_short_page() -> None:
+    """_fetch issues successive requests until a page shorter than PAGE_SIZE is returned."""
+    from api.management.commands.ingest_elevator_devices import PAGE_SIZE, _fetch
+
+    page1 = [{"bin": "X", "device_number": f"D{i}"} for i in range(PAGE_SIZE)]
+    page2 = [{"bin": "X", "device_number": "D_LAST"}]
+    call_count = 0
+
+    def mock_get(url: str, **kwargs: object) -> MagicMock:
+        nonlocal call_count
+        call_count += 1
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = page1 if call_count == 1 else page2
+        return m
+
+    with patch("api.management.commands.ingest_elevator_devices.httpx.get", side_effect=mock_get):
+        results = _fetch("https://example.com", {"$where": "test"}, {})
+
+    assert len(results) == PAGE_SIZE + 1
+    assert call_count == 2
+
+
 @pytest.mark.django_db
 class TestIngestElevatorDevices:
     """Tests for ingest_elevator_devices — two-step BIN → device → flag join."""

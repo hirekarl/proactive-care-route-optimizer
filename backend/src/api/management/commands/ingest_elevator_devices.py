@@ -2,10 +2,13 @@ import httpx
 from django.core.management.base import BaseCommand
 from django.db import connection
 
+from api.utils import _chunks
+
 COMPLIANCE_URL = "https://data.cityofnewyork.us/resource/e5aq-a4j2.json"
 DEVICE_DETAILS_URL = "https://data.cityofnewyork.us/resource/juyv-2jek.json"
 # Socrata IN() clauses become URL query strings — keep chunks small enough to avoid 414s.
 CHUNK_SIZE = 300
+PAGE_SIZE = 10_000
 
 
 class Command(BaseCommand):
@@ -32,7 +35,6 @@ class Command(BaseCommand):
                         f"bin IN ({bin_csv}) AND device_type='Elevator' AND device_status='Active'"
                     ),
                     "$select": "bin,device_number",
-                    "$limit": str(CHUNK_SIZE * 20),
                 },
                 headers,
             )
@@ -58,7 +60,6 @@ class Command(BaseCommand):
                 {
                     "$where": (f"bis_nyc_device_id IN ({id_csv}) AND device_status='Active'"),
                     "$select": "bis_nyc_device_id,only_elevator_in_building",
-                    "$limit": str(CHUNK_SIZE * 10),
                 },
                 headers,
             )
@@ -107,11 +108,16 @@ class Command(BaseCommand):
         return str(env_config("SOCRATA_APP_TOKEN", default=""))
 
 
-def _chunks(items: list[str], size: int) -> list[list[str]]:
-    return [items[i : i + size] for i in range(0, len(items), size)]
-
-
 def _fetch(url: str, params: dict[str, str], headers: dict[str, str]) -> list[dict[str, str]]:
-    response = httpx.get(url, params=params, headers=headers, timeout=30.0)
-    response.raise_for_status()
-    return response.json()  # type: ignore[no-any-return]
+    rows: list[dict[str, str]] = []
+    offset = 0
+    while True:
+        paged = {**params, "$limit": str(PAGE_SIZE), "$offset": str(offset)}
+        response = httpx.get(url, params=paged, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        page: list[dict[str, str]] = response.json()
+        rows.extend(page)
+        if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    return rows
