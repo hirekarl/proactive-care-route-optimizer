@@ -41,7 +41,7 @@ class TestRoutes:
                     {
                         "name": "Route A",
                         "date": "2026-06-27",
-                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                        "stops": [{"address": "350 Fifth Avenue New York NY 10118"}],
                     }
                 ),
                 content_type="application/json",
@@ -57,6 +57,61 @@ class TestRoutes:
         assert abs(stop["lon"] - (-73.9857)) < 0.001
         assert Route.objects.count() == 1
         assert RouteStop.objects.count() == 1
+
+    def test_create_route_uses_client_coords_and_persists_new_fields(self) -> None:
+        client = Client()
+        with patch("api.geocoding.httpx.get") as mock_get:
+            response = client.post(
+                "/api/routes/",
+                data=json.dumps(
+                    {
+                        "name": "R-MN-04",
+                        "date": "2026-06-30",
+                        "stops": [
+                            {
+                                "address": "1595 Lexington Ave, New York, NY 10029",
+                                "lat": 40.7918,
+                                "lng": -73.9445,
+                                "order": 0,
+                                "recipientName": "E. Alvarez",
+                                "floor": 6,
+                                "scheduledTime": "09:20",
+                                "providerId": "p1",
+                                "borough": "Manhattan",
+                            }
+                        ],
+                    }
+                ),
+                content_type="application/json",
+                **AUTH,
+            )
+            mock_get.assert_not_called()
+
+        assert response.status_code == 201
+        stop = RouteStop.objects.get()
+        assert stop.lat == 40.7918
+        assert stop.lon == -73.9445
+        assert stop.recipient_name == "E. Alvarez"
+        assert stop.floor == 6
+        assert stop.scheduled_time == "09:20"
+        assert stop.provider_id == "p1"
+        assert stop.borough == "Manhattan"
+
+    def test_create_route_rejects_partial_coordinates(self) -> None:
+        client = Client()
+        response = client.post(
+            "/api/routes/",
+            data=json.dumps(
+                {
+                    "name": "Bad Coords",
+                    "date": "2026-06-30",
+                    "stops": [{"address": "123 Main St", "lat": 40.7}],
+                }
+            ),
+            content_type="application/json",
+            **AUTH,
+        )
+        assert response.status_code == 400
 
     def test_create_route_invalid_payload_returns_400(self) -> None:
         client = Client()
@@ -83,7 +138,7 @@ class TestRoutes:
                     {
                         "name": "Route B",
                         "date": "2026-06-27",
-                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                        "stops": [{"address": "350 Fifth Avenue New York NY 10118"}],
                     }
                 ),
                 content_type="application/json",
@@ -109,7 +164,7 @@ class TestRoutes:
                     {
                         "name": "Route C",
                         "date": "2026-06-27",
-                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                        "stops": [{"address": "350 Fifth Avenue New York NY 10118"}],
                     }
                 ),
                 content_type="application/json",
@@ -137,7 +192,7 @@ class TestRoutes:
                     {
                         "name": "Route Sev",
                         "date": "2026-06-27",
-                        "stops": ["350 Fifth Avenue New York NY 10118"],
+                        "stops": [{"address": "350 Fifth Avenue New York NY 10118"}],
                     }
                 ),
                 content_type="application/json",
