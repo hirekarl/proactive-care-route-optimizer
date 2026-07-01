@@ -1,0 +1,7 @@
+[project]
+name = "pcro-deck"
+version = "0.1.0"
+description = "Mini L2L slide deck for Proactive Care-Route Optimizer"
+requires-python = ">=3.12"
+dependencies = ["python-pptx>=1.0"]
+
