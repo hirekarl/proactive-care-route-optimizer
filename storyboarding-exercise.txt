@@ -1,7 +1,0 @@
-Map your 5-slide story BEFORE you touch a tool. One key sentence per slide:
-	1	Your insight
-	2	The problem
-	3	Your solution
-	4	What it does
-	5	Why it matters
-Get the story straight first; the build goes faster when you know what you’re showing.
