@@ -30,6 +30,33 @@ class TestRouteStops:
         assert data[0]["routeName"] == "Today Route"
         assert data[0]["routeDate"] == today.isoformat()
 
+    def test_includes_new_frontend_fields(self) -> None:
+        today = datetime.date.today()
+        route = Route.objects.create(name="Today Route", date=today)
+        RouteStop.objects.create(
+            route=route,
+            address="123 Main St",
+            lat=40.7,
+            lon=-74.0,
+            order=2,
+            recipient_name="J. Smith",
+            floor=3,
+            scheduled_time="09:00",
+            provider_id="p1",
+            borough="Manhattan",
+        )
+
+        response = Client().get("/api/routes/stops/", **AUTH)
+        assert response.status_code == 200
+        data = response.json()[0]
+        assert data["lng"] == -74.0
+        assert data["sequence"] == 2
+        assert data["recipientName"] == "J. Smith"
+        assert data["floor"] == 3
+        assert data["scheduledTime"] == "09:00"
+        assert data["providerId"] == "p1"
+        assert data["borough"] == "Manhattan"
+
     def test_excludes_other_dates(self) -> None:
         today = datetime.date.today()
         yesterday = today - datetime.timedelta(days=1)

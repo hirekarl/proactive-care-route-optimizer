@@ -32,6 +32,13 @@ class RouteStop(models.Model):
     lat = models.FloatField(null=True)
     lon = models.FloatField(null=True)
     order = models.PositiveIntegerField()
+    recipient_name = models.TextField(blank=True, default="")
+    floor = models.IntegerField(null=True, blank=True)
+    scheduled_time = models.CharField(max_length=5, blank=True, default="")
+    # Not a real FK to DFTAProvider — seed data references demo provider IDs that don't
+    # necessarily match real ingested rows.
+    provider_id = models.TextField(blank=True, default="")
+    borough = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "route_stops"

@@ -26,6 +26,7 @@ from api.serializers import (
     RouteSerializer,
     RouteStopFlatSerializer,
 )
+from api.utils import METERS_PER_MILE
 from api.utils import OUTAGE_RADIUS_M as ALERT_RADIUS_M
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,9 @@ BATCH_PROXIMITY_SQL = f"""
         ec.house_number,
         ec.house_street,
         ec.zip_code,
+        ec.community_board,
+        ec.lat,
+        ec.lon,
         ec.date_entered,
         ST_Distance(
             ec.location::geography,
@@ -136,7 +140,7 @@ BATCH_PROXIMITY_SQL = f"""
 """
 
 
-def _enrich_outage_row(row: dict[str, Any]) -> dict[str, Any]:
+def _borough_and_address(row: dict[str, Any]) -> tuple[str, str]:
     cb = str(row.get("community_board") or "")
     borough = BOROUGH_BY_CODE.get(cb[:1], "") if cb else ""
     address = ", ".join(
@@ -148,12 +152,36 @@ def _enrich_outage_row(row: dict[str, Any]) -> dict[str, Any]:
         ]
         if p
     )
+    return borough, address
+
+
+def _enrich_outage_row(row: dict[str, Any]) -> dict[str, Any]:
+    borough, address = _borough_and_address(row)
     return {
         **row,
         "id": row["complaint_number"],
         "borough": borough,
         "address": address,
         "lng": row["lon"],
+    }
+
+
+def _alert_row_to_outage_dict(row: dict[str, Any]) -> dict[str, Any]:
+    """Outage-shaped dict from a BATCH_PROXIMITY_SQL row, for the nested AtRiskStop.outage."""
+    borough, address = _borough_and_address(row)
+    return {
+        "id": row["complaint_number"],
+        "complaint_number": row["complaint_number"],
+        "status": "ACTIVE",  # BATCH_PROXIMITY_SQL only ever joins ACTIVE complaints
+        "bin": row["bin"],
+        "address": address,
+        "borough": borough,
+        "zip_code": row.get("zip_code") or "",
+        "lat": row.get("lat"),
+        "lng": row.get("lon"),
+        "date_entered": row.get("date_entered"),
+        "chronic_offender": bool(row.get("is_chronic", False)),
+        "single_elevator": bool(row.get("is_single_elevator", False)),
     }
 
 
@@ -405,11 +433,28 @@ class RouteCreateView(APIView):
         route = Route.objects.create(name=data["name"], date=data["date"])
 
         stops: list[RouteStop] = []
-        for order, address in enumerate(data["stops"]):
-            lonlat = geocode_address(address)
-            lat = lonlat[1] if lonlat else None
-            lon = lonlat[0] if lonlat else None
-            stops.append(RouteStop(route=route, address=address, lat=lat, lon=lon, order=order))
+        for order, stop_data in enumerate(data["stops"]):
+            address = stop_data["address"]
+            lat = stop_data.get("lat")
+            lon = stop_data.get("lon")
+            if lat is None or lon is None:
+                lonlat = geocode_address(address)
+                lat = lonlat[1] if lonlat else None
+                lon = lonlat[0] if lonlat else None
+            stops.append(
+                RouteStop(
+                    route=route,
+                    address=address,
+                    lat=lat,
+                    lon=lon,
+                    order=order,
+                    recipient_name=stop_data.get("recipient_name", ""),
+                    floor=stop_data.get("floor"),
+                    scheduled_time=stop_data.get("scheduled_time", ""),
+                    provider_id=stop_data.get("provider_id", ""),
+                    borough=stop_data.get("borough", ""),
+                )
+            )
         RouteStop.objects.bulk_create(stops)
 
         route_out = Route.objects.prefetch_related("stops").get(pk=route.pk)
@@ -451,7 +496,7 @@ _SEVERITY_ORDER: dict[str, int] = {"critical": 0, "warning": 1, "watch": 2}
 
 
 class AlertsAtRiskView(APIView):
-    """GET /api/alerts/at-risk/ — stops with ≥1 active proximity alert."""
+    """GET /api/alerts/at-risk/ — one row per (stop, nearby active outage) pair."""
 
     permission_classes = [HasRouteApiKey]
 
@@ -471,26 +516,31 @@ class AlertsAtRiskView(APIView):
             return Response({"detail": "Proximity scan unavailable."}, status=503)
         _enrich_alerts_in_place(alerts_by_stop_id, is_heat_week)
 
-        results = []
+        provider_ids = {s.provider_id for s in stops if s.provider_id}
+        providers_by_id = {
+            p.provider_id: p for p in DFTAProvider.objects.filter(provider_id__in=provider_ids)
+        }
+
+        results: list[dict[str, Any]] = []
         for stop in stops:
-            alerts = alerts_by_stop_id.get(stop.pk)
-            if not alerts:
-                continue
-            highest = min(alerts, key=lambda a: _SEVERITY_ORDER.get(a["severity"], 3))["severity"]
-            results.append(
-                {
-                    "id": stop.pk,
-                    "route_id": stop.route_id,
-                    "route_name": stop.route.name,
-                    "route_date": stop.route.date,
-                    "address": stop.address,
-                    "lat": stop.lat,
-                    "lon": stop.lon,
-                    "order": stop.order,
-                    "outage_alerts": alerts,
-                    "highest_severity": highest,
-                }
-            )
+            for row in alerts_by_stop_id.get(stop.pk, []):
+                results.append(
+                    {
+                        "stop": stop,
+                        "alert": {
+                            "id": f"{stop.pk}-{row['complaint_number']}",
+                            "stop_id": stop.pk,
+                            "outage_id": row["complaint_number"],
+                            "distance_miles": row["distance_m"] / METERS_PER_MILE,
+                            "severity": row["severity"],
+                            "suggested_action": row["suggested_action"],
+                        },
+                        "outage": _alert_row_to_outage_dict(row),
+                        "provider": providers_by_id.get(stop.provider_id),
+                    }
+                )
+
+        results.sort(key=lambda r: _SEVERITY_ORDER.get(r["alert"]["severity"], 3))
 
         return Response(AtRiskStopSerializer(results, many=True).data)
 

@@ -1,4 +1,3 @@
-import datetime
 from typing import Any
 
 from rest_framework import serializers
@@ -64,40 +63,88 @@ class RouteSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
         fields = ["id", "name", "date", "stops"]
 
 
+class RouteStopInputSerializer(serializers.Serializer):  # type: ignore[type-arg]
+    """One stop in POST /api/routes/ — matches seedRoutes.ts's RoutePostBody.stops[]."""
+
+    address = serializers.CharField()
+    lat = serializers.FloatField(required=False, allow_null=True, default=None)
+    lng = serializers.FloatField(source="lon", required=False, allow_null=True, default=None)
+    order = serializers.IntegerField(required=False)  # accepted, ignored — server derives order
+    recipient_name = serializers.CharField(required=False, allow_blank=True, default="")
+    floor = serializers.IntegerField(required=False, allow_null=True, default=None)
+    scheduled_time = serializers.CharField(required=False, allow_blank=True, default="")
+    provider_id = serializers.CharField(required=False, allow_blank=True, default="")
+    borough = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if (attrs.get("lat") is None) != (attrs.get("lon") is None):
+            raise ValidationError("lat and lng must both be present or both be omitted.")
+        return attrs
+
+
 class RouteCreateSerializer(serializers.Serializer):  # type: ignore[type-arg]
     name = serializers.CharField()
     date = serializers.DateField()
-    stops = serializers.ListField(child=serializers.CharField(), min_length=1)
-
-    def validate_date(self, value: datetime.date) -> datetime.date:
-        return value
+    stops = RouteStopInputSerializer(many=True, allow_empty=False)
 
 
 class RouteStopFlatSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
-    """Flat stop shape for GET /api/routes/stops/ — includes parent route fields."""
+    """Flat stop shape matching the frontend's RouteStop type, field for field."""
 
     route_id = serializers.IntegerField(source="route.id")
     route_name = serializers.CharField(source="route.name")
     route_date = serializers.DateField(source="route.date")
+    sequence = serializers.IntegerField(source="order")
+    lng = serializers.FloatField(source="lon")
 
     class Meta:
         model = RouteStop
-        fields = ["id", "route_id", "route_name", "route_date", "address", "lat", "lon", "order"]
+        fields = [
+            "id",
+            "route_id",
+            "route_name",
+            "route_date",
+            "recipient_name",
+            "address",
+            "borough",
+            "lat",
+            "lng",
+            "floor",
+            "scheduled_time",
+            "provider_id",
+            "sequence",
+        ]
+
+
+class ProximityAlertSerializer(serializers.Serializer):  # type: ignore[type-arg]
+    """Matches the frontend's ProximityAlert type."""
+
+    id = serializers.CharField()
+    stop_id = serializers.IntegerField()
+    outage_id = serializers.CharField()
+    distance_miles = serializers.FloatField()
+    severity = serializers.CharField()
+    suggested_action = serializers.CharField()
+
+
+class ProviderSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
+    """DFTA provider shape for GET /api/providers/ — matches Mitra's Provider type."""
+
+    id = serializers.CharField(source="provider_id")
+    lng = serializers.FloatField(source="lon")
+
+    class Meta:
+        model = DFTAProvider
+        fields = ["id", "name", "borough", "address", "lat", "lng"]
 
 
 class AtRiskStopSerializer(serializers.Serializer):  # type: ignore[type-arg]
-    """Stop with proximity-matched outage alerts for GET /api/alerts/at-risk/."""
+    """One (stop, nearby active outage) match for GET /api/alerts/at-risk/."""
 
-    id = serializers.IntegerField()
-    route_id = serializers.IntegerField()
-    route_name = serializers.CharField()
-    route_date = serializers.DateField()
-    address = serializers.CharField()
-    lat = serializers.FloatField(allow_null=True)
-    lon = serializers.FloatField(allow_null=True)
-    order = serializers.IntegerField()
-    outage_alerts = OutageAlertSerializer(many=True)
-    highest_severity = serializers.CharField()
+    stop = RouteStopFlatSerializer()
+    alert = ProximityAlertSerializer()
+    outage = EnrichedOutageSerializer()
+    provider = ProviderSerializer(allow_null=True)
 
 
 class BuildingRiskScoreSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
@@ -139,14 +186,3 @@ class BuildingUpdateSerializer(serializers.ModelSerializer):  # type: ignore[typ
         if value is not None and value < 1:
             raise ValidationError("Must be a positive integer (1 = single elevator).")
         return value
-
-
-class ProviderSerializer(serializers.ModelSerializer):  # type: ignore[type-arg]
-    """DFTA provider shape for GET /api/providers/ — matches Mitra's Provider type."""
-
-    id = serializers.CharField(source="provider_id")
-    lng = serializers.FloatField(source="lon")
-
-    class Meta:
-        model = DFTAProvider
-        fields = ["id", "name", "borough", "address", "lat", "lng"]
