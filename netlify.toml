@@ -1,0 +1,20 @@
+# Netlify deploy config — gives every branch and PR its own preview URL.
+# One-time setup: connect this repo at https://app.netlify.com (New site → import
+# from GitHub). Netlify reads this file; no dashboard build settings needed.
+
+[build]
+  base = "frontend"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Previews have no backend — run the dashboard on built-in mock data.
+  VITE_USE_MOCK = "true"
+
+# SPA fallback: react-router owns client-side routes (/dashboard, /map, …),
+# so every path must serve index.html instead of 404ing on deep links/reload.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
