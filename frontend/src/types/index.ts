@@ -88,5 +88,6 @@ export interface AtRiskStop {
   stop: RouteStop;
   alert: ProximityAlert;
   outage: Outage;
-  provider: Provider;
+  // null when the stop's providerId doesn't match any ingested DFTAProvider row.
+  provider: Provider | null;
 }

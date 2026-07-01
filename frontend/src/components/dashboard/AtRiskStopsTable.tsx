@@ -29,7 +29,9 @@ export function AtRiskStopsTable({ stops }: AtRiskStopsTableProps) {
                   </span>
                 </div>
                 <p className="mt-1 truncate text-sm text-slate-300">{stop.address}</p>
-                <p className="mt-0.5 text-xs text-slate-500">Provider: {provider.name}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Provider: {provider?.name ?? "Unknown"}
+                </p>
               </div>
               <div className="flex flex-col items-end gap-1 text-right">
                 <span className="text-xs font-medium text-slate-400">
