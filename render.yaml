@@ -82,6 +82,10 @@ services:
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     headers:
       - path: /*
         name: Cache-Control
@@ -90,7 +94,7 @@ services:
         name: Cache-Control
         value: public, max-age=31536000, immutable
     envVars:
-      - key: VITE_API_URL
+      - key: VITE_API_BASE
         fromService:
           name: pcro-backend
           type: web
